@@ -38,14 +38,15 @@ export const RunView = ({
         </div>
       ) : null}
 
-      <button
-        type="button"
-        className="mx-auto block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white"
-        disabled={running}
-        onClick={onRestartOnboarding}
-      >
-        Restart setup
-      </button>
+      {!running ? (
+        <button
+          type="button"
+          className="mx-auto block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white"
+          onClick={onRestartOnboarding}
+        >
+          Restart setup
+        </button>
+      ) : null}
     </div>
   );
 };
