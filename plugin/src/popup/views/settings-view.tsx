@@ -4,6 +4,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING } from "../../lib/integrations/email-enrichment/config";
 
 type SettingsViewProps = {
   state: OnboardingState;
@@ -85,7 +86,18 @@ export const SettingsView = ({
 
       <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3">
         <p className="text-sm font-medium text-zinc-800">RocketReach API key</p>
-        {state.rocketreachKeySet ? <Badge>Encrypted key saved</Badge> : <Badge>Missing</Badge>}
+        {state.rocketreachKeySet ? (
+          <Badge>Encrypted key saved</Badge>
+        ) : ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING ? (
+          <Badge>Missing</Badge>
+        ) : (
+          <Badge>Optional</Badge>
+        )}
+        {!ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING ? (
+          <p className="text-xs text-zinc-500">
+            Mock provider is first in the lookup chain during development.
+          </p>
+        ) : null}
         <Label htmlFor="settings-rocketreach">Update key</Label>
         <Input
           id="settings-rocketreach"

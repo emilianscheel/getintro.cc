@@ -17,7 +17,7 @@ import {
 import { signInWithGoogle, signOutGoogle } from "../src/lib/auth/google";
 import { crawlSite } from "../src/lib/crawl/crawler";
 import { extractCandidatesWithMistral } from "../src/lib/integrations/mistral";
-import { enrichCandidatesWithRocketReach } from "../src/lib/integrations/rocketreach";
+import { enrichCandidatesWithEmailProviders } from "../src/lib/integrations/email-enrichment";
 import { createDraftAndSend } from "../src/lib/integrations/gmail";
 import { defineBackground } from "wxt/utils/define-background";
 
@@ -119,10 +119,8 @@ const startPipeline = async (
   const mistralKey = await loadApiKey("mistral");
   const rocketreachKey = await loadApiKey("rocketreach");
 
-  if (!mistralKey || !rocketreachKey) {
-    return errorResponse(
-      "Missing encrypted API keys. Open settings and re-enter your keys."
-    );
+  if (!mistralKey) {
+    return errorResponse("Missing Mistral API key. Open settings and add your key.");
   }
 
   const tab = await getActiveTab();
@@ -157,12 +155,14 @@ const startPipeline = async (
 
   if (!partial && candidates.length > 0) {
     try {
-      candidates = await enrichCandidatesWithRocketReach({
-        apiKey: rocketreachKey,
+      candidates = await enrichCandidatesWithEmailProviders({
         domain: pageUrl.hostname,
         candidates,
         maxCandidates: MAX_ROCKETREACH_CANDIDATES,
-        deadlineAt
+        deadlineAt,
+        apiKeys: {
+          rocketreach: rocketreachKey
+        }
       });
     } catch {
       partial = true;

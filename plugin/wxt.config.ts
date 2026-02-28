@@ -8,11 +8,16 @@ loadEnv();
 const GOOGLE_OAUTH_CLIENT_ID =
     process.env.GOOGLE_OAUTH_CLIENT_ID ??
     "REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com";
+const EMAIL_LOOKUP_PROVIDER_CHAIN =
+    process.env.EMAIL_LOOKUP_PROVIDER_CHAIN ?? "mock,rocketreach";
 
 export default defineConfig({
     modules: ["@wxt-dev/module-react"],
     vite: () => ({
         plugins: [tsconfigPaths()],
+        define: {
+            __EMAIL_LOOKUP_PROVIDER_CHAIN__: JSON.stringify(EMAIL_LOOKUP_PROVIDER_CHAIN),
+        },
     }),
     manifest: {
         name: "getintro.cc",

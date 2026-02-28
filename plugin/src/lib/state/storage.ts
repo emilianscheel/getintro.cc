@@ -4,6 +4,7 @@ import type {
   OnboardingState,
   StoredSecrets
 } from "../types";
+import { ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING } from "../integrations/email-enrichment/config";
 
 const STORAGE_KEYS = {
   ONBOARDING_STATE: "onboarding-state",
@@ -22,8 +23,9 @@ const DEFAULT_ONBOARDING_STATE: OnboardingState = {
 const deriveCompleted = (state: OnboardingState): OnboardingState => {
   return {
     ...state,
-    completed:
-      state.googleConnected && state.mistralKeySet && state.rocketreachKeySet
+    completed: ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING
+      ? state.googleConnected && state.mistralKeySet && state.rocketreachKeySet
+      : state.googleConnected && state.mistralKeySet
   };
 };
 

@@ -11,6 +11,7 @@ import {
   CardDescription,
   CardTitle
 } from "../../components/ui/card";
+import { ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING } from "../../lib/integrations/email-enrichment/config";
 
 type OnboardingViewProps = {
   state: OnboardingState;
@@ -44,7 +45,9 @@ export const OnboardingView = ({
     () => ({
       google: state.googleConnected,
       mistral: state.mistralKeySet,
-      rocketreach: state.rocketreachKeySet
+      rocketreach: ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING
+        ? state.rocketreachKeySet
+        : true
     }),
     [state.googleConnected, state.mistralKeySet, state.rocketreachKeySet]
   );
@@ -191,12 +194,18 @@ export const OnboardingView = ({
               RocketReach API Key
             </CardTitle>
             <CardDescription>
-              Required for candidate email enrichment in the background pipeline.
+              {ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING
+                ? "Required for candidate email enrichment in the background pipeline."
+                : "Optional in development. The mock provider runs first, so RocketReach calls are skipped by default."}
             </CardDescription>
 
             {state.rocketreachKeySet ? (
               <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
                 Key already saved
+              </Badge>
+            ) : !ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING ? (
+              <Badge className="border-zinc-200 bg-zinc-50 text-zinc-600">
+                Optional right now
               </Badge>
             ) : null}
 
