@@ -16,7 +16,7 @@ type ResultFormViewProps = {
   submitting: boolean;
   onSubmit: (payload: DraftAndSendRequest) => Promise<void>;
   onRunAgain: () => Promise<void>;
-  onOpenSettings: () => void;
+  onRestartOnboarding: () => void;
 };
 
 const DEFAULT_MESSAGE =
@@ -33,7 +33,7 @@ export const ResultFormView = ({
   submitting,
   onSubmit,
   onRunAgain,
-  onOpenSettings
+  onRestartOnboarding
 }: ResultFormViewProps) => {
   const [toOpen, setToOpen] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(
@@ -66,9 +66,9 @@ export const ResultFormView = ({
         </div>
       </div>
 
-      <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-3">
+      <div className="space-y-3 rounded-xl border border-white/40 bg-black/20 p-3 text-white">
         <p className="text-sm">
-          <span className="font-medium text-zinc-700">From:</span> {fromEmail}
+          <span className="font-medium text-white/80">From:</span> {fromEmail}
         </p>
 
         <div className="space-y-2">
@@ -76,27 +76,27 @@ export const ResultFormView = ({
           <div className="relative">
             <button
               type="button"
-              className="flex w-full items-center justify-between rounded-md border border-input bg-white px-3 py-2 text-left text-sm"
+              className="flex w-full items-center justify-between rounded-md border border-white/50 bg-white/15 px-3 py-2 text-left text-sm text-white"
               onClick={() => setToOpen((current) => !current)}
             >
               <span className="line-clamp-1">{selectedLabel}</span>
-              <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-zinc-500" />
+              <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-white/70" />
             </button>
 
             {toOpen ? (
-              <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-md border border-zinc-200 bg-white shadow-soft">
+              <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-md border border-white/30 bg-zinc-900 shadow-soft">
                 {result.candidates.map((candidate, index) => (
                   <button
                     key={`${candidate.name}-${candidate.email ?? "none"}-${index}`}
                     type="button"
-                    className="w-full border-b border-zinc-100 px-3 py-2 text-left last:border-b-0 hover:bg-zinc-50"
+                    className="w-full border-b border-white/10 px-3 py-2 text-left last:border-b-0 hover:bg-white/10"
                     onClick={() => {
                       setSelectedCandidate(candidate);
                       setToOpen(false);
                     }}
                   >
-                    <p className="text-sm font-medium text-zinc-800">{candidate.name}</p>
-                    <p className="text-xs text-zinc-400">
+                    <p className="text-sm font-medium text-white">{candidate.name}</p>
+                    <p className="text-xs text-white/60">
                       {candidate.email ?? "no email found"} · {candidate.role}
                     </p>
                   </button>
@@ -136,7 +136,7 @@ export const ResultFormView = ({
         </Button>
 
         {!selectedCandidate?.email ? (
-          <p className="text-xs text-amber-700">
+          <p className="text-xs text-zinc-600">
             Selected candidate has no email. Choose one with an email address to submit.
           </p>
         ) : null}
@@ -147,8 +147,8 @@ export const ResultFormView = ({
           <RotateCcw className="mr-2 h-4 w-4" />
           Run again
         </Button>
-        <Button variant="outline" className="flex-1" onClick={onOpenSettings}>
-          Settings
+        <Button variant="outline" className="flex-1" onClick={onRestartOnboarding}>
+          Restart setup
         </Button>
       </div>
     </div>

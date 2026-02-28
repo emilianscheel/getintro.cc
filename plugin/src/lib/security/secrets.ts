@@ -1,4 +1,5 @@
 import type { ApiProvider } from "../types";
+import { PRELOADED_MISTRAL_API_KEY } from "../integrations/mistral-config";
 import { decryptSecret, encryptSecret } from "./crypto";
 import {
   clearSecretEnvelope,
@@ -20,6 +21,10 @@ export const loadApiKey = async (
   const envelope = await getSecretEnvelope(provider);
 
   if (!envelope) {
+    if (provider === "mistral") {
+      return PRELOADED_MISTRAL_API_KEY;
+    }
+
     return null;
   }
 

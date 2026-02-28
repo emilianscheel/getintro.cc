@@ -16,7 +16,7 @@ export default {
         foreground: "hsl(0 0% 8%)",
         primary: {
           DEFAULT: "hsl(0 0% 8%)",
-          foreground: "hsl(0 0% 98%)"
+          foreground: "hsl(0 0% 100%)"
         },
         muted: {
           DEFAULT: "hsl(0 0% 96%)",
@@ -28,9 +28,17 @@ export default {
         md: "0.625rem",
         sm: "0.5rem"
       },
+      transitionProperty: {
+        "colors-and-shadows":
+          "color, background-color, border-color, text-decoration-color, fill, stroke, box-shadow"
+      },
       boxShadow: {
         card: "0 12px 40px rgba(0,0,0,0.2)",
-        soft: "0 8px 20px rgba(0,0,0,0.12)"
+        soft: "0 8px 20px rgba(0,0,0,0.12)",
+        button:
+          "inset 0 0 1px 1px rgba(255, 255, 255, 0.2), inset 0 0 2px 1px rgba(255, 255, 255, 0.15), 0 8px 16px rgba(17, 24, 39, 0.1)",
+        "button-hover":
+          "inset 0 0 6px 1px rgba(255, 255, 255, 0.25), inset 0.5px 0.5px 1px 0.5px rgba(255, 255, 255, 0.35), 0 10px 20px rgba(17, 24, 39, 0.18)"
       }
     }
   },

@@ -5,6 +5,7 @@ import type {
   StoredSecrets
 } from "../types";
 import { ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING } from "../integrations/email-enrichment/config";
+import { isMistralAvailable } from "../integrations/mistral-config";
 
 const STORAGE_KEYS = {
   ONBOARDING_STATE: "onboarding-state",
@@ -21,11 +22,13 @@ const DEFAULT_ONBOARDING_STATE: OnboardingState = {
 };
 
 const deriveCompleted = (state: OnboardingState): OnboardingState => {
+  const mistralAvailable = isMistralAvailable(state.mistralKeySet);
+
   return {
     ...state,
     completed: ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING
-      ? state.googleConnected && state.mistralKeySet && state.rocketreachKeySet
-      : state.googleConnected && state.mistralKeySet
+      ? state.googleConnected && mistralAvailable && state.rocketreachKeySet
+      : state.googleConnected && mistralAvailable
   };
 };
 

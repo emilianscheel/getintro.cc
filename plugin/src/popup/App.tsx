@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import type { OnboardingState, OnboardingStep, PipelineResult } from "../lib/types";
 import { MESSAGE_TYPE } from "../lib/messages";
 import { sendRuntimeMessage } from "../lib/runtime";
+import { PRELOADED_MISTRAL_API_KEY } from "../lib/integrations/mistral-config";
 import { PopupShell } from "../components/popup-shell";
 import { HelloView } from "./views/hello-view";
 import { OnboardingView } from "./views/onboarding-view";
 import { RunView } from "./views/run-view";
 import { ResultFormView } from "./views/result-form-view";
-import { SettingsView } from "./views/settings-view";
 
-type Screen = "hello" | "onboarding" | "run" | "running" | "results" | "settings";
+type Screen = "hello" | "onboarding" | "run" | "running" | "results";
 
 const initialState: OnboardingState = {
   started: false,
@@ -29,8 +28,14 @@ export const App = () => {
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [latestResult, setLatestResult] = useState<PipelineResult | null>(null);
+  const [onboardingPrefill, setOnboardingPrefill] = useState<{
+    mistral: string;
+    rocketreach: string;
+  }>({
+    mistral: PRELOADED_MISTRAL_API_KEY ?? "",
+    rocketreach: ""
+  });
 
   const resolveInitialScreen = (onboardingState: OnboardingState): Screen => {
     if (!onboardingState.started) {
@@ -79,7 +84,6 @@ export const App = () => {
   const runAuthAction = async (action: () => Promise<void>) => {
     setBusy(true);
     setError(null);
-    setSuccess(null);
 
     try {
       await action();
@@ -115,22 +119,6 @@ export const App = () => {
       }
 
       updateAuthState(response.state);
-      if (response.state.googleConnected) {
-        setSuccess(`Google connected as ${response.state.googleEmail}`);
-      }
-    });
-  };
-
-  const onDisconnectGoogle = async () => {
-    await runAuthAction(async () => {
-      const response = await sendRuntimeMessage({ type: MESSAGE_TYPE.DISCONNECT_GOOGLE });
-
-      if (!response.ok || response.type !== MESSAGE_TYPE.AUTH_STATUS_CHANGED) {
-        throw new Error(response.ok ? "Google disconnect failed." : response.error);
-      }
-
-      updateAuthState(response.state);
-      setSuccess("Google account disconnected.");
     });
   };
 
@@ -147,13 +135,15 @@ export const App = () => {
       }
 
       updateAuthState(response.state);
-      setSuccess(`${provider} key saved in encrypted storage.`);
+      setOnboardingPrefill((current) => ({
+        ...current,
+        [provider]: value.trim()
+      }));
     });
   };
 
   const runPipeline = async () => {
     setError(null);
-    setSuccess(null);
     setBusy(true);
     setScreen("running");
     setCountdown(5);
@@ -179,11 +169,6 @@ export const App = () => {
       }
 
       setLatestResult(response.result);
-      setSuccess(
-        response.result.partial
-          ? "Returned partial result at countdown deadline."
-          : "Pipeline completed successfully."
-      );
       setScreen("results");
     } catch (pipelineError) {
       setError(
@@ -206,7 +191,6 @@ export const App = () => {
     message: string;
   }) => {
     setError(null);
-    setSuccess(null);
     setSubmitting(true);
 
     try {
@@ -218,8 +202,6 @@ export const App = () => {
       if (!response.ok || response.type !== MESSAGE_TYPE.EMAIL_SENT) {
         throw new Error(response.ok ? "Failed to send email." : response.error);
       }
-
-      setSuccess(`Email sent. Draft ${response.draftId}, message ${response.messageId}.`);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -234,24 +216,20 @@ export const App = () => {
   const banner = useMemo(() => {
     if (error) {
       return (
-        <div className="mb-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5" />
+        <div className="mb-3 rounded-md border border-white/40 bg-black/20 px-3 py-2 text-xs text-white">
           <span>{error}</span>
         </div>
       );
     }
 
-    if (success) {
-      return (
-        <div className="mb-3 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5" />
-          <span>{success}</span>
-        </div>
-      );
-    }
-
     return null;
-  }, [error, success]);
+  }, [error]);
+
+  const restartOnboarding = () => {
+    setError(null);
+    setActiveStep("google");
+    setScreen("onboarding");
+  };
 
   return (
     <PopupShell>
@@ -267,21 +245,20 @@ export const App = () => {
             busy={busy}
             onStepChange={setActiveStep}
             onConnectGoogle={onConnectGoogle}
-            onDisconnectGoogle={onDisconnectGoogle}
             onSaveMistralKey={(value) => saveApiKey("mistral", value)}
             onSaveRocketReachKey={(value) => saveApiKey("rocketreach", value)}
             onComplete={() => setScreen("run")}
+            initialMistralKey={onboardingPrefill.mistral}
+            initialRocketReachKey={onboardingPrefill.rocketreach}
           />
         ) : null}
 
         {screen === "run" || screen === "running" ? (
           <RunView
-            state={state}
             countdown={countdown}
             running={screen === "running"}
-            latestResult={latestResult}
             onRun={runPipeline}
-            onOpenSettings={() => setScreen("settings")}
+            onRestartOnboarding={restartOnboarding}
           />
         ) : null}
 
@@ -292,19 +269,7 @@ export const App = () => {
             submitting={submitting}
             onSubmit={submitEmail}
             onRunAgain={runPipeline}
-            onOpenSettings={() => setScreen("settings")}
-          />
-        ) : null}
-
-        {screen === "settings" ? (
-          <SettingsView
-            state={state}
-            busy={busy}
-            onBack={() => setScreen(state.completed ? "run" : "onboarding")}
-            onReconnectGoogle={onConnectGoogle}
-            onDisconnectGoogle={onDisconnectGoogle}
-            onSaveMistral={(value) => saveApiKey("mistral", value)}
-            onSaveRocketReach={(value) => saveApiKey("rocketreach", value)}
+            onRestartOnboarding={restartOnboarding}
           />
         ) : null}
       </div>

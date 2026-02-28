@@ -5,6 +5,10 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING } from "../../lib/integrations/email-enrichment/config";
+import {
+  hasPreloadedMistralApiKey,
+  isMistralAvailable
+} from "../../lib/integrations/mistral-config";
 
 type SettingsViewProps = {
   state: OnboardingState;
@@ -40,9 +44,7 @@ export const SettingsView = ({
       <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3">
         <p className="text-sm font-medium text-zinc-800">Google account</p>
         {state.googleConnected ? (
-          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-            Connected as {state.googleEmail}
-          </Badge>
+          <Badge>Connected as {state.googleEmail}</Badge>
         ) : (
           <Badge>Not connected</Badge>
         )}
@@ -63,8 +65,23 @@ export const SettingsView = ({
 
       <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3">
         <p className="text-sm font-medium text-zinc-800">Mistral API key</p>
-        {state.mistralKeySet ? <Badge>Encrypted key saved</Badge> : <Badge>Missing</Badge>}
-        <Label htmlFor="settings-mistral">Update key</Label>
+        {state.mistralKeySet ? (
+          <Badge>Encrypted key saved</Badge>
+        ) : hasPreloadedMistralApiKey ? (
+          <Badge>Using .env.local key</Badge>
+        ) : (
+          <Badge>Missing</Badge>
+        )}
+        {isMistralAvailable(state.mistralKeySet) ? (
+          <p className="text-xs text-zinc-500">
+            {hasPreloadedMistralApiKey && !state.mistralKeySet
+              ? "Development key loaded from .env.local."
+              : "Saved key is encrypted in local storage."}
+          </p>
+        ) : null}
+        <Label htmlFor="settings-mistral">
+          {hasPreloadedMistralApiKey ? "Override key (optional)" : "Update key"}
+        </Label>
         <Input
           id="settings-mistral"
           type="password"

@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 
-const SHADER_VIDEO_SRC =
-  "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/alt-g7Cv2QzqL3k6ey3igjNYkM32d8Fld7.mp4";
-
+const shaderVideoSrc = chrome.runtime.getURL("shader.mp4");
 const placeholderSrc = chrome.runtime.getURL("alt-placeholder.png");
 
 export const ShaderBackground = ({ className }: { className?: string }) => {
@@ -42,7 +40,7 @@ export const ShaderBackground = ({ className }: { className?: string }) => {
       />
       <video
         ref={videoRef}
-        src={SHADER_VIDEO_SRC}
+        src={shaderVideoSrc}
         autoPlay
         muted
         loop

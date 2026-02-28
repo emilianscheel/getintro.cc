@@ -39,6 +39,7 @@
 3. Create `.env.local` from `.env.example` and set:
    - `GOOGLE_OAUTH_CLIENT_ID=...apps.googleusercontent.com`
    - `EMAIL_LOOKUP_PROVIDER_CHAIN=mock,rocketreach`
+   - `MISTRAL_API_KEY=...` (optional, development convenience)
 4. `bun run dev` (or `bun run build`)
 5. Load output as unpacked extension in Chrome
 
@@ -75,3 +76,4 @@ Use a **Chrome Extension OAuth client** (not Web/desktop client) and configure c
 - Host access is configured as `<all_urls>` per product requirement.
 - CSP allows only required API/media origins.
 - Email enrichment now runs through a provider chain abstraction. Default is `mock,rocketreach` so mock emails are used first during development.
+- If `MISTRAL_API_KEY` is set in `.env.local`, the extension uses it as a fallback when no encrypted Mistral key is stored.

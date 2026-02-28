@@ -10,6 +10,7 @@ const GOOGLE_OAUTH_CLIENT_ID =
     "REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com";
 const EMAIL_LOOKUP_PROVIDER_CHAIN =
     process.env.EMAIL_LOOKUP_PROVIDER_CHAIN ?? "mock,rocketreach";
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY?.trim() ?? "";
 
 export default defineConfig({
     modules: ["@wxt-dev/module-react"],
@@ -17,6 +18,7 @@ export default defineConfig({
         plugins: [tsconfigPaths()],
         define: {
             __EMAIL_LOOKUP_PROVIDER_CHAIN__: JSON.stringify(EMAIL_LOOKUP_PROVIDER_CHAIN),
+            __MISTRAL_API_KEY__: JSON.stringify(MISTRAL_API_KEY),
         },
     }),
     manifest: {
@@ -38,7 +40,7 @@ export default defineConfig({
         },
         content_security_policy: {
             extension_pages:
-                "script-src 'self'; object-src 'self'; img-src 'self' data: https://hebbkx1anhila5yf.public.blob.vercel-storage.com; media-src 'self' https://hebbkx1anhila5yf.public.blob.vercel-storage.com; connect-src 'self' https://gmail.googleapis.com https://www.googleapis.com https://api.mistral.ai https://api.rocketreach.co https://hebbkx1anhila5yf.public.blob.vercel-storage.com;",
+                "script-src 'self'; object-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self' https://gmail.googleapis.com https://www.googleapis.com https://api.mistral.ai https://api.rocketreach.co;",
         },
         icons: {
             "16": "icons/icon-16.png",
