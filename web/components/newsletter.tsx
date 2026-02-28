@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { Button } from "./ui/button";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -178,11 +179,14 @@ export const Newsletter = () => {
                             className="w-[50vw] max-w-4xl rounded-2xl overflow-hidden bg-white/20 backdrop-blur-xl shadow-2xl ring-1 ring-white/20 cursor-default"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <img
+                            <Image
                                 src="/demo.gif"
                                 alt="Demo video showing how getintro.cc works"
+                                width={1882}
+                                height={1242}
                                 className="w-full h-auto"
                                 loading="eager"
+                                unoptimized
                             />
                         </motion.div>
                     </motion.div>
