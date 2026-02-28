@@ -4,12 +4,11 @@ import { MESSAGE_TYPE } from "../lib/messages";
 import { sendRuntimeMessage } from "../lib/runtime";
 import { PRELOADED_MISTRAL_API_KEY } from "../lib/integrations/mistral-config";
 import { PopupShell } from "../components/popup-shell";
-import { HelloView } from "./views/hello-view";
 import { OnboardingView } from "./views/onboarding-view";
 import { RunView } from "./views/run-view";
 import { ResultFormView } from "./views/result-form-view";
 
-type Screen = "hello" | "onboarding" | "run" | "running" | "results";
+type Screen = "onboarding" | "run" | "running" | "results";
 
 const initialState: OnboardingState = {
   started: false,
@@ -22,7 +21,7 @@ const initialState: OnboardingState = {
 
 export const App = () => {
   const [state, setState] = useState<OnboardingState>(initialState);
-  const [screen, setScreen] = useState<Screen>("hello");
+  const [screen, setScreen] = useState<Screen>("onboarding");
   const [activeStep, setActiveStep] = useState<OnboardingStep>("google");
   const [countdown, setCountdown] = useState(5);
   const [busy, setBusy] = useState(false);
@@ -38,10 +37,6 @@ export const App = () => {
   });
 
   const resolveInitialScreen = (onboardingState: OnboardingState): Screen => {
-    if (!onboardingState.started) {
-      return "hello";
-    }
-
     if (!onboardingState.completed) {
       return "onboarding";
     }
@@ -65,11 +60,6 @@ export const App = () => {
 
   const updateAuthState = (next: OnboardingState) => {
     setState(next);
-
-    if (!next.started) {
-      setScreen("hello");
-      return;
-    }
 
     if (!next.completed && (screen === "run" || screen === "results")) {
       setScreen("onboarding");
@@ -96,20 +86,6 @@ export const App = () => {
     }
   };
 
-  const onGetStarted = () => {
-    void runAuthAction(async () => {
-      const response = await sendRuntimeMessage({ type: MESSAGE_TYPE.MARK_STARTED });
-
-      if (!response.ok || response.type !== MESSAGE_TYPE.AUTH_STATUS_CHANGED) {
-        throw new Error(response.ok ? "Failed to start onboarding." : response.error);
-      }
-
-      updateAuthState(response.state);
-      setScreen("onboarding");
-      setActiveStep("google");
-    });
-  };
-
   const onConnectGoogle = async () => {
     await runAuthAction(async () => {
       const response = await sendRuntimeMessage({ type: MESSAGE_TYPE.START_GOOGLE_AUTH });
@@ -119,6 +95,19 @@ export const App = () => {
       }
 
       updateAuthState(response.state);
+    });
+  };
+
+  const onDisconnectGoogle = async () => {
+    await runAuthAction(async () => {
+      const response = await sendRuntimeMessage({ type: MESSAGE_TYPE.DISCONNECT_GOOGLE });
+
+      if (!response.ok || response.type !== MESSAGE_TYPE.AUTH_STATUS_CHANGED) {
+        throw new Error(response.ok ? "Google sign-out failed." : response.error);
+      }
+
+      updateAuthState(response.state);
+      setActiveStep("google");
     });
   };
 
@@ -216,7 +205,7 @@ export const App = () => {
   const banner = useMemo(() => {
     if (error) {
       return (
-        <div className="mb-3 rounded-md border border-white/40 bg-black/20 px-3 py-2 text-xs text-white">
+        <div className="absolute inset-x-0 top-0 z-20 rounded-md border border-white/40 bg-black/20 px-3 py-2 text-xs text-white backdrop-blur-sm">
           <span>{error}</span>
         </div>
       );
@@ -233,10 +222,8 @@ export const App = () => {
 
   return (
     <PopupShell>
-      <div className="flex h-full flex-col">
+      <div className="relative flex h-full w-full items-center justify-center py-2">
         {banner}
-
-        {screen === "hello" ? <HelloView onGetStarted={onGetStarted} /> : null}
 
         {screen === "onboarding" ? (
           <OnboardingView
@@ -245,6 +232,7 @@ export const App = () => {
             busy={busy}
             onStepChange={setActiveStep}
             onConnectGoogle={onConnectGoogle}
+            onDisconnectGoogle={onDisconnectGoogle}
             onSaveMistralKey={(value) => saveApiKey("mistral", value)}
             onSaveRocketReachKey={(value) => saveApiKey("rocketreach", value)}
             onComplete={() => setScreen("run")}

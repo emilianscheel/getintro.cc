@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { OnboardingState, OnboardingStep } from "../../lib/types";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING } from "../../lib/integrations/email-enrichment/config";
 import {
   isMistralAvailable
@@ -12,6 +13,7 @@ type OnboardingViewProps = {
   activeStep: OnboardingStep;
   onStepChange: (step: OnboardingStep) => void;
   onConnectGoogle: () => Promise<void>;
+  onDisconnectGoogle: () => Promise<void>;
   onSaveMistralKey: (value: string) => Promise<void>;
   onSaveRocketReachKey: (value: string) => Promise<void>;
   onComplete: () => void;
@@ -27,6 +29,7 @@ export const OnboardingView = ({
   activeStep,
   onStepChange,
   onConnectGoogle,
+  onDisconnectGoogle,
   onSaveMistralKey,
   onSaveRocketReachKey,
   onComplete,
@@ -89,47 +92,78 @@ export const OnboardingView = ({
   }, [activeStep, onComplete, onStepChange, stepCompletion]);
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto pr-1">
-      <div className="flex-1" />
-
-      <div className="mt-auto space-y-3 pb-1">
+    <div className="flex h-full w-full items-center justify-center">
+      <div className="w-full space-y-3">
         {activeStep === "mistral" ? (
-          <Input
-            id="mistral-key"
-            type="password"
-            placeholder="mistral-..."
-            value={mistralKey}
-            onChange={(event) => setMistralKey(event.target.value)}
-            autoComplete="off"
-          />
+          <div className="space-y-2">
+            <Label
+              htmlFor="mistral-key"
+              className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-white"
+            >
+              Mistral API Key
+            </Label>
+            <Input
+              id="mistral-key"
+              type="password"
+              placeholder="mistral-..."
+              value={mistralKey}
+              onChange={(event) => setMistralKey(event.target.value)}
+              autoComplete="off"
+            />
+          </div>
         ) : null}
 
         {activeStep === "rocketreach" ? (
-          <Input
-            id="rocketreach-key"
-            type="password"
-            placeholder="rr-..."
-            value={rocketreachKey}
-            onChange={(event) => setRocketreachKey(event.target.value)}
-            autoComplete="off"
-          />
+          <div className="space-y-2">
+            <Label
+              htmlFor="rocketreach-key"
+              className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-white"
+            >
+              RocketReach API Key
+            </Label>
+            <Input
+              id="rocketreach-key"
+              type="password"
+              placeholder="rr-..."
+              value={rocketreachKey}
+              onChange={(event) => setRocketreachKey(event.target.value)}
+              autoComplete="off"
+            />
+          </div>
         ) : null}
 
         {activeStep === "google" ? (
-          <Button
-            className="w-full"
-            disabled={busy}
-            onClick={() => {
-              if (state.googleConnected) {
-                goForward();
-                return;
-              }
+          <div className="space-y-6">
+            <h1 className="text-center font-instrument text-5xl italic text-white">
+              getintro.cc
+            </h1>
+            <div className="space-y-3">
+              <Button
+                className="w-full"
+                disabled={busy}
+                onClick={() => {
+                  if (state.googleConnected) {
+                    goForward();
+                    return;
+                  }
 
-              void onConnectGoogle();
-            }}
-          >
-            {state.googleConnected ? "Next" : "Connect Google"}
-          </Button>
+                  void onConnectGoogle();
+                }}
+              >
+                {state.googleConnected ? "Continue" : "Sign in with Google"}
+              </Button>
+              {state.googleConnected ? (
+                <button
+                  type="button"
+                  className="mx-auto block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white"
+                  disabled={busy}
+                  onClick={() => void onDisconnectGoogle()}
+                >
+                  sign out
+                </button>
+              ) : null}
+            </div>
+          </div>
         ) : null}
 
         {activeStep === "mistral" ? (

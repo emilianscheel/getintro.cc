@@ -15,14 +15,8 @@ export const RunView = ({
   onRestartOnboarding
 }: RunViewProps) => {
   return (
-    <div className="flex h-full flex-col overflow-y-auto pr-1">
-      <div className="flex justify-end">
-        <Button variant="ghost" size="sm" onClick={onRestartOnboarding}>
-          <Settings2 className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="flex flex-1 items-center justify-center">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-4 py-2">
+      <div className="w-full space-y-4 text-center">
         {running ? (
           <div className="text-center">
             <p className="text-5xl font-semibold tabular-nums text-white">{countdown}</p>
@@ -32,20 +26,22 @@ export const RunView = ({
             </div>
           </div>
         ) : (
-          <Button
-            className="min-w-[180px] border-white/70 bg-white/25 text-white hover:bg-white/35"
-            onClick={() => void onRun()}
-          >
+          <Button className="min-w-[180px]" onClick={() => void onRun()}>
             Get intro
           </Button>
         )}
       </div>
 
       {running ? (
-        <div className="flex items-center justify-center text-xs text-white/80">
+        <div className="text-xs text-white/80">
           <span>Please keep this popup open.</span>
         </div>
       ) : null}
+
+      <Button size="sm" className="mx-auto" onClick={onRestartOnboarding}>
+        <Settings2 className="size-4" />
+        Restart setup
+      </Button>
     </div>
   );
 };

@@ -33,16 +33,16 @@ export const SettingsView = ({
   const [rocketreachKey, setRocketreachKey] = useState("");
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto pr-1">
+    <div className="flex h-full flex-col justify-center gap-4 overflow-y-auto py-2 pr-1">
       <div className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/75">
           Settings
         </p>
-        <h2 className="text-xl font-semibold text-zinc-900">Connection and keys</h2>
+        <h2 className="text-xl font-semibold text-white">Connection and keys</h2>
       </div>
 
-      <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3">
-        <p className="text-sm font-medium text-zinc-800">Google account</p>
+      <div className="space-y-2 rounded-xl border border-white/40 bg-black/20 p-3 text-white">
+        <p className="text-sm font-medium text-white">Google account</p>
         {state.googleConnected ? (
           <Badge>Connected as {state.googleEmail}</Badge>
         ) : (
@@ -52,19 +52,14 @@ export const SettingsView = ({
           <Button className="flex-1" disabled={busy} onClick={() => void onReconnectGoogle()}>
             Reconnect
           </Button>
-          <Button
-            variant="outline"
-            className="flex-1"
-            disabled={busy}
-            onClick={() => void onDisconnectGoogle()}
-          >
+          <Button className="flex-1" disabled={busy} onClick={() => void onDisconnectGoogle()}>
             Disconnect
           </Button>
         </div>
       </div>
 
-      <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3">
-        <p className="text-sm font-medium text-zinc-800">Mistral API key</p>
+      <div className="space-y-2 rounded-xl border border-white/40 bg-black/20 p-3 text-white">
+        <p className="text-sm font-medium text-white">Mistral API key</p>
         {state.mistralKeySet ? (
           <Badge>Encrypted key saved</Badge>
         ) : hasPreloadedMistralApiKey ? (
@@ -73,13 +68,13 @@ export const SettingsView = ({
           <Badge>Missing</Badge>
         )}
         {isMistralAvailable(state.mistralKeySet) ? (
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-white/70">
             {hasPreloadedMistralApiKey && !state.mistralKeySet
               ? "Development key loaded from .env.local."
               : "Saved key is encrypted in local storage."}
           </p>
         ) : null}
-        <Label htmlFor="settings-mistral">
+        <Label htmlFor="settings-mistral" className="text-white">
           {hasPreloadedMistralApiKey ? "Override key (optional)" : "Update key"}
         </Label>
         <Input
@@ -90,7 +85,6 @@ export const SettingsView = ({
           onChange={(event) => setMistralKey(event.target.value)}
         />
         <Button
-          variant="secondary"
           disabled={busy || !mistralKey.trim()}
           onClick={async () => {
             await onSaveMistral(mistralKey);
@@ -101,8 +95,8 @@ export const SettingsView = ({
         </Button>
       </div>
 
-      <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3">
-        <p className="text-sm font-medium text-zinc-800">RocketReach API key</p>
+      <div className="space-y-2 rounded-xl border border-white/40 bg-black/20 p-3 text-white">
+        <p className="text-sm font-medium text-white">RocketReach API key</p>
         {state.rocketreachKeySet ? (
           <Badge>Encrypted key saved</Badge>
         ) : ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING ? (
@@ -111,11 +105,13 @@ export const SettingsView = ({
           <Badge>Optional</Badge>
         )}
         {!ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING ? (
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-white/70">
             Mock provider is first in the lookup chain during development.
           </p>
         ) : null}
-        <Label htmlFor="settings-rocketreach">Update key</Label>
+        <Label htmlFor="settings-rocketreach" className="text-white">
+          Update key
+        </Label>
         <Input
           id="settings-rocketreach"
           type="password"
@@ -124,7 +120,6 @@ export const SettingsView = ({
           onChange={(event) => setRocketreachKey(event.target.value)}
         />
         <Button
-          variant="secondary"
           disabled={busy || !rocketreachKey.trim()}
           onClick={async () => {
             await onSaveRocketReach(rocketreachKey);
@@ -135,7 +130,7 @@ export const SettingsView = ({
         </Button>
       </div>
 
-      <Button variant="outline" className="mt-auto" onClick={onBack}>
+      <Button onClick={onBack}>
         Back
       </Button>
     </div>

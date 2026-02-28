@@ -3,10 +3,10 @@ import { ShaderBackground } from "./shader-background";
 
 export const PopupShell = ({ children }: { children: ReactNode }) => {
   return (
-    <div className="relative min-h-[560px] w-[380px] overflow-hidden">
+    <div className="relative h-[560px] w-[380px] overflow-hidden">
       <ShaderBackground />
-      <div className="relative z-10 p-3">
-        <div className="h-[534px] overflow-hidden rounded-2xl bg-white/20 p-4 shadow-card backdrop-blur-xl">
+      <div className="relative z-10 flex h-full w-full items-center justify-center px-4 py-6">
+        <div className="flex h-full w-full max-w-[320px] flex-col justify-center">
           {children}
         </div>
       </div>

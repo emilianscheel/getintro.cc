@@ -40,7 +40,7 @@ export default defineConfig({
         },
         content_security_policy: {
             extension_pages:
-                "script-src 'self'; object-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self' https://gmail.googleapis.com https://www.googleapis.com https://api.mistral.ai https://api.rocketreach.co;",
+                "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; font-src 'self' https://cdn.jsdelivr.net data:; connect-src 'self' https://gmail.googleapis.com https://www.googleapis.com https://api.mistral.ai https://api.rocketreach.co;",
         },
         icons: {
             "16": "icons/icon-16.png",
