@@ -3,10 +3,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import { V0Provider } from "@/lib/context";
-import dynamic from "next/dynamic";
-
-const V0Setup = dynamic(() => import("@/components/v0-setup"));
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -25,8 +21,6 @@ const instrumentSerif = Instrument_Serif({
     style: ["normal", "italic"],
 });
 
-const isV0 = process.env["VERCEL_URL"]?.includes("vusercontent.net") ?? false;
-
 export const metadata: Metadata = {
     title: "getintro.cc",
     description:
@@ -41,10 +35,7 @@ export default function RootLayout({
     return (
         <html lang="en">
             <body className={cn(geistSans.variable, geistMono.variable, instrumentSerif.variable)}>
-                <V0Provider isV0={isV0}>
-                    {children}
-                    {isV0 && <V0Setup />}
-                </V0Provider>
+                {children}
             </body>
         </html>
     );

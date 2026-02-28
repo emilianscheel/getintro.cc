@@ -12,7 +12,6 @@
         "@emotion/is-prop-valid": "latest",
         "@eslint/eslintrc": "latest",
         "@hookform/resolvers": "latest",
-        "@joycostudio/v0-setup": "latest",
         "@radix-ui/react-accordion": "1.2.2",
         "@radix-ui/react-alert-dialog": "1.1.4",
         "@radix-ui/react-aspect-ratio": "1.1.1",
