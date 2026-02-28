@@ -19,12 +19,14 @@ import { crawlSite } from "../src/lib/crawl/crawler";
 import { extractCandidatesWithMistral } from "../src/lib/integrations/mistral";
 import { enrichCandidatesWithEmailProviders } from "../src/lib/integrations/email-enrichment";
 import { createDraftAndSend } from "../src/lib/integrations/gmail";
+import { elapsedMs, logError, logInfo, previewText } from "../src/lib/logging";
 import { defineBackground } from "wxt/utils/define-background";
 
 const DEFAULT_COUNTDOWN_SECONDS = 5;
 const MAX_DEPTH = 2 as const;
 const MAX_PAGES = 25;
 const MAX_ROCKETREACH_CANDIDATES = 8;
+const DISABLE_GMAIL_SEND_FOR_TESTING = true;
 type ActiveTab = chrome.tabs.Tab & { id: number; url: string };
 
 const errorResponse = (error: string): RuntimeResponse => ({
@@ -32,6 +34,77 @@ const errorResponse = (error: string): RuntimeResponse => ({
   type: MESSAGE_TYPE.PIPELINE_ERROR,
   error
 });
+
+const summarizeRuntimeRequest = (message: RuntimeRequest): Record<string, unknown> => {
+  switch (message.type) {
+    case MESSAGE_TYPE.SAVE_API_KEY:
+      return {
+        type: message.type,
+        provider: message.provider,
+        keyLength: message.value.length
+      };
+    case MESSAGE_TYPE.START_PIPELINE:
+      return {
+        type: message.type,
+        countdownSeconds: message.countdownSeconds ?? DEFAULT_COUNTDOWN_SECONDS
+      };
+    case MESSAGE_TYPE.SUBMIT_EMAIL:
+      return {
+        type: message.type,
+        payload: {
+          fromEmail: message.payload.fromEmail,
+          toEmail: message.payload.toEmail,
+          subject: message.payload.subject,
+          messageLength: message.payload.message.length,
+          messagePreview: previewText(message.payload.message, 200)
+        }
+      };
+    default:
+      return { type: message.type };
+  }
+};
+
+const summarizeRuntimeResponse = (
+  response: RuntimeResponse
+): Record<string, unknown> => {
+  if (!response.ok) {
+    return {
+      ok: false,
+      type: response.type,
+      error: response.error
+    };
+  }
+
+  if (response.type === "STATE" || response.type === MESSAGE_TYPE.AUTH_STATUS_CHANGED) {
+    return {
+      ok: true,
+      type: response.type,
+      state: response.state
+    };
+  }
+
+  if (response.type === MESSAGE_TYPE.PIPELINE_RESULT) {
+    return {
+      ok: true,
+      type: response.type,
+      result: {
+        domain: response.result.domain,
+        partial: response.result.partial,
+        stoppedAtMs: response.result.stoppedAtMs,
+        visitedUrls: response.result.visitedUrls.length,
+        regexEmails: response.result.emailsRegex.length,
+        candidates: response.result.candidates.length
+      }
+    };
+  }
+
+  return {
+    ok: true,
+    type: response.type,
+    draftId: response.draftId,
+    messageId: response.messageId
+  };
+};
 
 const formatNameFromEmail = (email: string): string => {
   const localPart = email.split("@")[0] ?? "";
@@ -110,23 +183,45 @@ const withAbortDeadline = async <T>(
 const startPipeline = async (
   countdownSeconds: number
 ): Promise<RuntimeResponse> => {
+  const pipelineStartedAt = Date.now();
+  logInfo("pipeline", "starting pipeline", { countdownSeconds });
+
   const onboarding = await getOnboardingState();
+  logInfo("pipeline", "loaded onboarding state", onboarding);
 
   if (!onboarding.completed) {
+    logInfo("pipeline", "pipeline blocked because onboarding is incomplete");
     return errorResponse("Please complete onboarding before running the pipeline.");
   }
 
   const mistralKey = await loadApiKey("mistral");
   const rocketreachKey = await loadApiKey("rocketreach");
+  logInfo("pipeline", "loaded API keys", {
+    mistralKeyPresent: Boolean(mistralKey),
+    rocketreachKeyPresent: Boolean(rocketreachKey)
+  });
 
   if (!mistralKey) {
+    logInfo("pipeline", "pipeline blocked because Mistral API key is missing");
     return errorResponse("Missing Mistral API key. Open settings and add your key.");
   }
 
   const tab = await getActiveTab();
   const pageUrl = new URL(tab.url);
   const deadlineAt = Date.now() + countdownSeconds * 1000;
+  logInfo("pipeline", "resolved active tab", {
+    tabId: tab.id,
+    tabUrl: tab.url,
+    hostname: pageUrl.hostname
+  });
 
+  const crawlStartedAt = Date.now();
+  logInfo("pipeline:crawl", "crawl started", {
+    startUrl: tab.url,
+    maxDepth: MAX_DEPTH,
+    maxPages: MAX_PAGES,
+    deadlineInMs: Math.max(0, deadlineAt - Date.now())
+  });
   const crawl = await crawlSite({
     tabId: tab.id,
     startUrl: tab.url,
@@ -134,11 +229,26 @@ const startPipeline = async (
     maxPages: MAX_PAGES,
     deadlineAt
   });
+  logInfo("pipeline:crawl", "crawl completed", {
+    elapsedMs: elapsedMs(crawlStartedAt),
+    pages: crawl.pages.length,
+    visitedUrls: crawl.visitedUrls.length,
+    regexEmails: crawl.emailsRegex.length,
+    combinedTextChars: crawl.combinedText.length,
+    partial: crawl.partial
+  });
 
   let candidates: Candidate[] = [];
   let partial = crawl.partial || Date.now() >= deadlineAt;
 
   if (!partial && crawl.combinedText.trim()) {
+    const mistralStartedAt = Date.now();
+    logInfo("pipeline:mistral", "candidate extraction started", {
+      domain: pageUrl.hostname,
+      combinedTextChars: crawl.combinedText.length,
+      deadlineInMs: Math.max(0, deadlineAt - Date.now())
+    });
+
     try {
       candidates = await withAbortDeadline(deadlineAt, (signal) =>
         extractCandidatesWithMistral(
@@ -148,12 +258,28 @@ const startPipeline = async (
           signal
         )
       );
-    } catch {
+      logInfo("pipeline:mistral", "candidate extraction completed", {
+        elapsedMs: elapsedMs(mistralStartedAt),
+        candidates: candidates.length,
+        preview: candidates.slice(0, 5)
+      });
+    } catch (error) {
+      logError("pipeline:mistral", "candidate extraction failed", error);
       partial = true;
     }
+  } else if (!partial) {
+    logInfo("pipeline:mistral", "skipped candidate extraction because crawl text was empty");
   }
 
   if (!partial && candidates.length > 0) {
+    const enrichmentStartedAt = Date.now();
+    logInfo("pipeline:enrichment", "email enrichment started", {
+      domain: pageUrl.hostname,
+      candidates: candidates.length,
+      maxCandidates: MAX_ROCKETREACH_CANDIDATES,
+      deadlineInMs: Math.max(0, deadlineAt - Date.now())
+    });
+
     try {
       candidates = await enrichCandidatesWithEmailProviders({
         domain: pageUrl.hostname,
@@ -164,21 +290,41 @@ const startPipeline = async (
           rocketreach: rocketreachKey
         }
       });
-    } catch {
+      logInfo("pipeline:enrichment", "email enrichment completed", {
+        elapsedMs: elapsedMs(enrichmentStartedAt),
+        candidates: candidates.length,
+        candidatesWithEmail: candidates.filter((candidate) => Boolean(candidate.email))
+          .length
+      });
+    } catch (error) {
+      logError("pipeline:enrichment", "email enrichment failed", error);
       partial = true;
     }
+  } else if (!partial) {
+    logInfo("pipeline:enrichment", "skipped email enrichment because there were no candidates");
   }
 
   partial = partial || Date.now() >= deadlineAt;
 
+  const mergedCandidates = mergeRegexEmails(candidates, crawl.emailsRegex);
   const result: PipelineResult = {
     domain: pageUrl.hostname,
     visitedUrls: crawl.visitedUrls,
     emailsRegex: crawl.emailsRegex,
-    candidates: mergeRegexEmails(candidates, crawl.emailsRegex),
+    candidates: mergedCandidates,
     partial,
     stoppedAtMs: countdownSeconds * 1000 - Math.max(0, deadlineAt - Date.now())
   };
+  logInfo("pipeline", "pipeline completed", {
+    elapsedMs: elapsedMs(pipelineStartedAt),
+    partial: result.partial,
+    stoppedAtMs: result.stoppedAtMs,
+    visitedUrls: result.visitedUrls.length,
+    regexEmails: result.emailsRegex.length,
+    candidates: result.candidates.length,
+    candidatesWithEmail: result.candidates.filter((candidate) => Boolean(candidate.email))
+      .length
+  });
 
   return {
     ok: true,
@@ -264,8 +410,22 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
     }
 
     case MESSAGE_TYPE.SUBMIT_EMAIL: {
-      console.log("[getintro.cc][debug] outbound email payload", message.payload);
+      if (DISABLE_GMAIL_SEND_FOR_TESTING) {
+        logInfo("gmail", "submit email skipped because testing mode is enabled");
+        return errorResponse(
+          "Gmail sending is disabled for testing. Google login is still enabled."
+        );
+      }
+
+      logInfo("gmail", "submitting outbound email", {
+        fromEmail: message.payload.fromEmail,
+        toEmail: message.payload.toEmail,
+        subject: message.payload.subject,
+        messageLength: message.payload.message.length,
+        messagePreview: previewText(message.payload.message, 200)
+      });
       const sent = await createDraftAndSend(message.payload);
+      logInfo("gmail", "gmail send completed", sent);
 
       return {
         ok: true,
@@ -281,17 +441,26 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
 };
 
 export default defineBackground(() => {
+  logInfo("lifecycle", "background worker initialized");
+
   chrome.runtime.onMessage.addListener((incoming, _sender, sendResponse) => {
     if (!isRuntimeRequest(incoming)) {
+      logError("runtime", "received unknown message", incoming);
       sendResponse(errorResponse("Unknown message type."));
       return false;
     }
 
     void (async () => {
       try {
+        logInfo("runtime", "received request", summarizeRuntimeRequest(incoming));
         const response = await handleMessage(incoming);
+        logInfo("runtime", "sending response", summarizeRuntimeResponse(response));
         sendResponse(response);
       } catch (error) {
+        logError("runtime", "failed to handle request", {
+          request: summarizeRuntimeRequest(incoming),
+          error
+        });
         sendResponse(
           errorResponse(
             error instanceof Error ? error.message : "Unexpected background error"
@@ -304,10 +473,13 @@ export default defineBackground(() => {
   });
 
   chrome.runtime.onInstalled.addListener((details) => {
+    logInfo("lifecycle", "onInstalled fired", { reason: details.reason });
+
     if (details.reason !== "install") {
       return;
     }
 
+    logInfo("lifecycle", "clearing onboarding state and API keys for fresh install");
     void patchOnboardingState({ started: false });
     void clearApiKey("mistral");
     void clearApiKey("rocketreach");

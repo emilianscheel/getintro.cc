@@ -30,12 +30,12 @@ export default {
       },
       fontFamily: {
         instrument: [
-          "Instrument Sans Variable",
-          "Instrument Sans",
-          "Inter",
-          "ui-sans-serif",
-          "system-ui",
-          "sans-serif"
+          "Instrument Serif",
+          "Iowan Old Style",
+          "Times New Roman",
+          "ui-serif",
+          "Georgia",
+          "serif"
         ]
       },
       transitionProperty: {

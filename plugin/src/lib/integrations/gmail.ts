@@ -1,5 +1,6 @@
 import type { DraftAndSendRequest } from "../types";
 import { getTokenForApi, removeCachedToken } from "../auth/google";
+import { elapsedMs, logError, logInfo, previewText } from "../logging";
 
 const base64UrlEncode = (value: string): string => {
   const bytes = new TextEncoder().encode(value);
@@ -31,6 +32,13 @@ const gmailRequest = async <T>(
   endpoint: string,
   init: RequestInit
 ): Promise<T> => {
+  const requestStartedAt = Date.now();
+  logInfo("gmail:api", "sending request", {
+    endpoint,
+    method: init.method ?? "GET",
+    bodyLength: typeof init.body === "string" ? init.body.length : null
+  });
+
   const response = await fetch(endpoint, {
     ...init,
     headers: {
@@ -42,22 +50,49 @@ const gmailRequest = async <T>(
 
   if (response.status === 401) {
     await removeCachedToken(token);
+    logError("gmail:api", "request rejected because auth expired", {
+      endpoint,
+      status: response.status,
+      elapsedMs: elapsedMs(requestStartedAt)
+    });
     throw new Error("Google auth expired. Please try again.");
   }
 
   if (!response.ok) {
     const errorBody = await response.text();
+    logError("gmail:api", "request failed", {
+      endpoint,
+      status: response.status,
+      elapsedMs: elapsedMs(requestStartedAt),
+      errorBody
+    });
     throw new Error(`Gmail API error (${response.status}): ${errorBody}`);
   }
 
-  return (await response.json()) as T;
+  const payload = (await response.json()) as T;
+  logInfo("gmail:api", "received response", {
+    endpoint,
+    status: response.status,
+    elapsedMs: elapsedMs(requestStartedAt),
+    payload
+  });
+
+  return payload;
 };
 
 export const createDraftAndSend = async (
   payload: DraftAndSendRequest
 ): Promise<{ draftId: string; messageId: string }> => {
+  logInfo("gmail", "createDraftAndSend started", {
+    fromEmail: payload.fromEmail,
+    toEmail: payload.toEmail,
+    subject: payload.subject,
+    messageLength: payload.message.length,
+    messagePreview: previewText(payload.message, 200)
+  });
   const token = await getTokenForApi();
   const raw = buildRawMessage(payload);
+  logInfo("gmail", "encoded draft message", { rawLength: raw.length });
 
   const draft = await gmailRequest<{ id: string }>(
     token,
@@ -71,6 +106,7 @@ export const createDraftAndSend = async (
       })
     }
   );
+  logInfo("gmail", "draft created", { draftId: draft.id });
 
   const sent = await gmailRequest<{ id: string }>(
     token,
@@ -82,6 +118,7 @@ export const createDraftAndSend = async (
       })
     }
   );
+  logInfo("gmail", "draft sent", { draftId: draft.id, messageId: sent.id });
 
   return {
     draftId: draft.id,

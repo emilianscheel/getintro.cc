@@ -257,7 +257,6 @@ export const App = () => {
             submitting={submitting}
             onSubmit={submitEmail}
             onRunAgain={runPipeline}
-            onRestartOnboarding={restartOnboarding}
           />
         ) : null}
       </div>

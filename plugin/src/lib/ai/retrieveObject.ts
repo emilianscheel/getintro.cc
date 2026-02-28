@@ -1,6 +1,7 @@
 import { createMistral } from "@ai-sdk/mistral";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { logError, logInfo, previewText } from "../logging";
 import type { Candidate } from "../types";
 
 const candidateSchema = z.object({
@@ -34,7 +35,8 @@ export const retrieveObject = async ({
   text,
   signal
 }: RetrieveObjectInput): Promise<Candidate[]> => {
-  const model = createMistral({ apiKey })("mistral-small-latest");
+  const modelId = "mistral-small-latest";
+  const model = createMistral({ apiKey })(modelId);
 
   const prompt = [
     `Analyze the following company website text for domain ${domain}.`,
@@ -44,17 +46,36 @@ export const retrieveObject = async ({
     "If uncertain, still return best guesses with lower score."
   ].join("\n");
 
-  const { object } = await generateObject({
-    model,
-    schema: responseSchema,
-    prompt: `${prompt}\n\nWebsite text:\n${text.slice(0, 80_000)}`,
-    abortSignal: signal
+  const requestPrompt = `${prompt}\n\nWebsite text:\n${text.slice(0, 80_000)}`;
+  logInfo("mistral", "sending request", {
+    model: modelId,
+    domain,
+    inputTextChars: text.length,
+    promptChars: requestPrompt.length,
+    promptPreview: previewText(requestPrompt, 1_500)
   });
 
-  return object.candidates.map((candidate) => ({
-    name: candidate.name.trim(),
-    role: candidate.role.trim(),
-    score: clampScore(candidate.score),
-    source: "mistral"
-  }));
+  try {
+    const { object } = await generateObject({
+      model,
+      schema: responseSchema,
+      prompt: requestPrompt,
+      abortSignal: signal
+    });
+
+    logInfo("mistral", "received response", {
+      candidates: object.candidates.length,
+      payload: object
+    });
+
+    return object.candidates.map((candidate) => ({
+      name: candidate.name.trim(),
+      role: candidate.role.trim(),
+      score: clampScore(candidate.score),
+      source: "mistral"
+    }));
+  } catch (error) {
+    logError("mistral", "request failed", error);
+    throw error;
+  }
 };

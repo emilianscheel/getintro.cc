@@ -6,6 +6,7 @@ import {
 import type { EmailLookupProvider } from "./types";
 import { mockEmailLookupProvider } from "./providers/mock";
 import { rocketReachEmailLookupProvider } from "./providers/rocketreach";
+import { elapsedMs, logError, logInfo } from "../../logging";
 
 type EnrichCandidatesInput = {
   domain: string;
@@ -70,26 +71,55 @@ export const enrichCandidatesWithEmailProviders = async ({
   deadlineAt,
   apiKeys
 }: EnrichCandidatesInput): Promise<Candidate[]> => {
+  const startedAt = Date.now();
   const sorted = [...candidates].sort((a, b) => b.score - a.score);
   const selected = sorted.slice(0, maxCandidates);
+  logInfo("enrichment", "starting provider chain", {
+    domain,
+    candidateCount: candidates.length,
+    selectedCount: selected.length,
+    maxCandidates,
+    providerChain: EMAIL_ENRICHMENT_PROVIDER_CHAIN
+  });
 
   const enriched: Candidate[] = [];
 
   for (const candidate of selected) {
     if (Date.now() >= deadlineAt) {
+      logInfo("enrichment", "deadline reached before candidate lookup", {
+        candidate: candidate.name
+      });
       enriched.push(candidate);
       continue;
     }
 
     let finalCandidate = candidate;
+    logInfo("enrichment", "candidate lookup started", {
+      candidate: candidate.name,
+      role: candidate.role,
+      hasEmail: Boolean(candidate.email)
+    });
 
     for (const providerId of EMAIL_ENRICHMENT_PROVIDER_CHAIN) {
       const provider = PROVIDERS[providerId];
       const apiKey = getApiKeyForProvider(providerId, apiKeys);
 
       if (provider.requiresApiKey && !apiKey) {
+        logInfo("enrichment", "provider skipped because API key is missing", {
+          providerId,
+          candidate: candidate.name
+        });
         continue;
       }
+
+      const providerStartedAt = Date.now();
+      logInfo("enrichment", "provider request", {
+        providerId,
+        candidate: candidate.name,
+        role: candidate.role,
+        domain,
+        hasApiKey: Boolean(apiKey)
+      });
 
       try {
         const emails = await withCandidateLookupDeadline(deadlineAt, (signal) =>
@@ -101,6 +131,12 @@ export const enrichCandidatesWithEmailProviders = async ({
             apiKey
           })
         );
+        logInfo("enrichment", "provider response", {
+          providerId,
+          candidate: candidate.name,
+          elapsedMs: elapsedMs(providerStartedAt),
+          emails
+        });
 
         const firstEmail = emails[0]?.trim().toLowerCase();
 
@@ -110,15 +146,29 @@ export const enrichCandidatesWithEmailProviders = async ({
             email: firstEmail,
             source: providerToCandidateSource(providerId)
           };
+          logInfo("enrichment", "candidate enriched", {
+            providerId,
+            candidate: candidate.name,
+            email: firstEmail
+          });
           break;
         }
-      } catch {
-        // Silently continue with next provider or fallback candidate.
+      } catch (error) {
+        logError("enrichment", "provider request failed", {
+          providerId,
+          candidate: candidate.name,
+          error
+        });
       }
     }
 
     enriched.push(finalCandidate);
   }
-
-  return [...enriched, ...sorted.slice(maxCandidates)];
+  const result = [...enriched, ...sorted.slice(maxCandidates)];
+  logInfo("enrichment", "completed provider chain", {
+    elapsedMs: elapsedMs(startedAt),
+    totalCandidates: result.length,
+    candidatesWithEmail: result.filter((candidate) => Boolean(candidate.email)).length
+  });
+  return result;
 };

@@ -1,4 +1,4 @@
-import { LoaderCircle, Settings2 } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { Button } from "../../components/ui/button";
 
 type RunViewProps = {
@@ -38,10 +38,14 @@ export const RunView = ({
         </div>
       ) : null}
 
-      <Button size="sm" className="mx-auto" onClick={onRestartOnboarding}>
-        <Settings2 className="size-4" />
+      <button
+        type="button"
+        className="mx-auto block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white"
+        disabled={running}
+        onClick={onRestartOnboarding}
+      >
         Restart setup
-      </Button>
+      </button>
     </div>
   );
 };
