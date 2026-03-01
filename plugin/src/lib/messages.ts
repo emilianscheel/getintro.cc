@@ -105,6 +105,7 @@ export type RuntimeResponse =
       type: typeof MESSAGE_TYPE.EMAIL_SENT;
       draftId: string;
       messageId: string;
+      gmailUrl: string;
     }
   | {
       ok: false;

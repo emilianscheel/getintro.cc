@@ -36,6 +36,7 @@ export type Candidate = {
   score: number;
   role: string;
   email?: string;
+  draftSubject?: string;
   draft?: string;
   source: "mistral" | "rocketreach" | "mock" | "regex";
 };
@@ -47,6 +48,7 @@ export type PipelineResult = {
   visitedUrls: string[];
   emailsRegex: string[];
   candidates: Candidate[];
+  multiRecipientDraftSubject?: string;
   multiRecipientDraft?: string;
   partial: boolean;
   stoppedAtMs: number;
@@ -72,6 +74,7 @@ export type CachedDomainPipelinePool = {
   visitedUrls: string[];
   emailsRegex: string[];
   candidates: Candidate[];
+  multiRecipientDraftSubject?: string;
   multiRecipientDraft?: string;
   updatedAtMs: number;
 };

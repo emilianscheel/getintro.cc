@@ -40,6 +40,9 @@ export const mergePipelineResultIntoPool = (
     visitedUrls: mergeUniqueStrings(existingPool?.visitedUrls ?? [], freshResult.visitedUrls),
     emailsRegex: mergeUniqueStrings(existingPool?.emailsRegex ?? [], freshResult.emailsRegex),
     candidates: mergedCandidates,
+    multiRecipientDraftSubject:
+      (freshResult.multiRecipientDraftSubject?.trim() || undefined) ??
+      existingPool?.multiRecipientDraftSubject,
     multiRecipientDraft:
       (freshResult.multiRecipientDraft?.trim() || undefined) ??
       existingPool?.multiRecipientDraft,

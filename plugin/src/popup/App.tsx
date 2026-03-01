@@ -16,9 +16,10 @@ import { toast } from "../lib/use-toast";
 import { OnboardingView } from "./views/onboarding-view";
 import { RunView } from "./views/run-view";
 import { ResultFormView } from "./views/result-form-view";
+import { EmailSentView } from "./views/email-sent-view";
 import { appendUnseenCandidates } from "./pipelineResults";
 
-type Screen = "onboarding" | "run" | "running" | "results";
+type Screen = "onboarding" | "run" | "running" | "results" | "email_sent";
 
 const initialState: OnboardingState = {
   started: false,
@@ -46,6 +47,7 @@ export const App = () => {
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [latestResult, setLatestResult] = useState<PipelineResult | null>(null);
+  const [sentGmailUrl, setSentGmailUrl] = useState<string | null>(null);
   const [pendingRefreshDomain, setPendingRefreshDomain] = useState<string | null>(null);
   const [activeHostname, setActiveHostname] = useState<string | undefined>(undefined);
   const [hasActiveHostnameCache, setHasActiveHostnameCache] = useState(false);
@@ -178,7 +180,7 @@ export const App = () => {
       customDraftPrompt: next.customDraftPrompt ?? current.customDraftPrompt
     }));
 
-    if (!next.completed && (screen === "run" || screen === "results")) {
+    if (!next.completed && (screen === "run" || screen === "results" || screen === "email_sent")) {
       setScreen("onboarding");
     }
   };
@@ -269,6 +271,7 @@ export const App = () => {
   const runPipeline = async (mode: PipelineRunMode) => {
     setBusy(true);
     setScreen("running");
+    setSentGmailUrl(null);
     setPendingRefreshDomain(null);
 
     try {
@@ -316,6 +319,9 @@ export const App = () => {
       if (!response.ok || response.type !== MESSAGE_TYPE.EMAIL_SENT) {
         throw new Error(response.ok ? "Failed to send email." : response.error);
       }
+
+      setSentGmailUrl(response.gmailUrl);
+      setScreen("email_sent");
     } catch (submitError) {
       showErrorToast(
         submitError instanceof Error ? submitError.message : "Failed to submit email."
@@ -370,6 +376,7 @@ export const App = () => {
     setActiveStep("google");
     setPendingRefreshDomain(null);
     setLatestResult(null);
+    setSentGmailUrl(null);
     setActiveHostname(undefined);
     setHasActiveHostnameCache(false);
     setScreen("onboarding");
@@ -420,6 +427,8 @@ export const App = () => {
             onRunAgain={() => runPipeline("fresh_only")}
           />
         ) : null}
+
+        {screen === "email_sent" && sentGmailUrl ? <EmailSentView gmailUrl={sentGmailUrl} /> : null}
 
         <Toaster />
       </div>

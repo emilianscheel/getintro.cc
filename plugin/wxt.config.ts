@@ -11,6 +11,15 @@ const GOOGLE_OAUTH_CLIENT_ID =
 const EMAIL_LOOKUP_PROVIDER_CHAIN =
     process.env.EMAIL_LOOKUP_PROVIDER_CHAIN ?? "mock,rocketreach";
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY?.trim() ?? "";
+const DISABLE_GMAIL_SEND_FOR_TESTING = (() => {
+    const rawValue = process.env.DISABLE_GMAIL_SEND_FOR_TESTING?.trim().toLowerCase();
+
+    if (!rawValue) {
+        return true;
+    }
+
+    return ["1", "true", "yes", "on"].includes(rawValue);
+})();
 
 export default defineConfig({
     modules: ["@wxt-dev/module-react"],
@@ -19,6 +28,7 @@ export default defineConfig({
         define: {
             __EMAIL_LOOKUP_PROVIDER_CHAIN__: JSON.stringify(EMAIL_LOOKUP_PROVIDER_CHAIN),
             __MISTRAL_API_KEY__: JSON.stringify(MISTRAL_API_KEY),
+            __DISABLE_GMAIL_SEND_FOR_TESTING__: JSON.stringify(DISABLE_GMAIL_SEND_FOR_TESTING),
         },
     }),
     manifest: {

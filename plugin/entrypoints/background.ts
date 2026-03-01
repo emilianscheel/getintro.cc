@@ -44,7 +44,7 @@ const DEFAULT_COUNTDOWN_SECONDS = 5;
 const MAX_DEPTH = 2 as const;
 const MAX_PAGES = 25;
 const MAX_ROCKETREACH_CANDIDATES = 8;
-const DISABLE_GMAIL_SEND_FOR_TESTING = true;
+const DISABLE_GMAIL_SEND_FOR_TESTING = __DISABLE_GMAIL_SEND_FOR_TESTING__;
 const pipelineRefreshInFlight = new Set<string>();
 type ActiveTab = chrome.tabs.Tab & { id: number; url: string };
 
@@ -154,6 +154,7 @@ const summarizeRuntimeResponse = (response: RuntimeResponse): Record<string, unk
         type: response.type,
         draftId: response.draftId,
         messageId: response.messageId,
+        gmailUrl: response.gmailUrl,
     };
 };
 
@@ -296,6 +297,7 @@ const poolToPipelineResult = (
         visitedUrls: pool.visitedUrls,
         emailsRegex: pool.emailsRegex,
         candidates: pool.candidates,
+        multiRecipientDraftSubject: pool.multiRecipientDraftSubject,
         multiRecipientDraft: pool.multiRecipientDraft,
         partial: false,
         stoppedAtMs: 0,
@@ -385,11 +387,7 @@ const runFreshPipelineForDomain = async ({
                 preview: candidates.slice(0, 5),
             });
         } else {
-            logError(
-                "pipeline:mistral",
-                "candidate extraction failed",
-                candidateExtraction.reason,
-            );
+            logError("pipeline:mistral", "candidate extraction failed", candidateExtraction.reason);
             partial = true;
         }
 
@@ -408,7 +406,10 @@ const runFreshPipelineForDomain = async ({
             );
         }
     } else {
-        logInfo("pipeline:mistral", "skipped candidate extraction because there was no crawl text or regex email input");
+        logInfo(
+            "pipeline:mistral",
+            "skipped candidate extraction because there was no crawl text or regex email input",
+        );
     }
 
     if (candidates.length > 0) {
@@ -442,8 +443,13 @@ const runFreshPipelineForDomain = async ({
         logInfo("pipeline:enrichment", "skipped email enrichment because there were no candidates");
     }
 
-    const mergedCandidates = mergeRegexEmails(candidates, crawl.emailsRegex, regexDisplayCandidates);
+    const mergedCandidates = mergeRegexEmails(
+        candidates,
+        crawl.emailsRegex,
+        regexDisplayCandidates,
+    );
     let candidatesWithDrafts = mergedCandidates;
+    let multiRecipientDraftSubject: string | undefined;
     let multiRecipientDraft: string | undefined;
 
     if (mergedCandidates.length > 0) {
@@ -461,13 +467,14 @@ const runFreshPipelineForDomain = async ({
 
             candidatesWithDrafts = mergedCandidates.map((candidate, index) => ({
                 ...candidate,
-                draft: drafts[index]?.trim() || undefined,
+                draftSubject: drafts[index]?.subject.trim() || undefined,
+                draft: drafts[index]?.message.trim() || undefined,
             }));
 
             logInfo("pipeline:mistral", "candidate draft generation completed", {
                 elapsedMs: elapsedMs(draftStartedAt),
                 candidates: mergedCandidates.length,
-                draftsGenerated: drafts.filter((draft) => Boolean(draft?.trim())).length,
+                draftsGenerated: drafts.filter((draft) => Boolean(draft?.message.trim())).length,
             });
         } catch (error) {
             logError("pipeline:mistral", "candidate draft generation failed", error);
@@ -477,7 +484,7 @@ const runFreshPipelineForDomain = async ({
     if (candidatesWithDrafts.length > 1) {
         try {
             const genericDraftStartedAt = Date.now();
-            multiRecipientDraft = await generateGenericMultiRecipientEmailDraftWithMistral(
+            const genericDraft = await generateGenericMultiRecipientEmailDraftWithMistral(
                 mistralKey,
                 pageUrl.hostname,
                 crawl.combinedText,
@@ -486,10 +493,13 @@ const runFreshPipelineForDomain = async ({
                 onboarding.googleEmail,
                 onboarding.customDraftPrompt,
             );
+            multiRecipientDraftSubject = genericDraft?.subject.trim() || undefined;
+            multiRecipientDraft = genericDraft?.message.trim() || undefined;
             logInfo("pipeline:mistral", "generic multi-recipient draft generation completed", {
                 elapsedMs: elapsedMs(genericDraftStartedAt),
                 recipients: candidatesWithDrafts.length,
-                hasDraft: Boolean(multiRecipientDraft),
+                hasDraft: Boolean(multiRecipientDraft?.trim()),
+                hasSubject: Boolean(multiRecipientDraftSubject?.trim()),
             });
         } catch (error) {
             logError("pipeline:mistral", "generic multi-recipient draft generation failed", error);
@@ -501,6 +511,7 @@ const runFreshPipelineForDomain = async ({
         visitedUrls: crawl.visitedUrls,
         emailsRegex: crawl.emailsRegex,
         candidates: candidatesWithDrafts,
+        multiRecipientDraftSubject,
         multiRecipientDraft,
         partial,
         stoppedAtMs: elapsedMs(pipelineStartedAt),
@@ -832,6 +843,7 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
                 type: MESSAGE_TYPE.EMAIL_SENT,
                 draftId: sent.draftId,
                 messageId: sent.messageId,
+                gmailUrl: sent.gmailUrl,
             };
         }
 

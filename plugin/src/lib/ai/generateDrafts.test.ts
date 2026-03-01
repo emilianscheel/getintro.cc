@@ -11,6 +11,7 @@ describe("draft prompt builders", () => {
     );
 
     expect(prompt).toContain("venture capital partners");
+    expect(prompt).toContain("subject must be concise, readable, and plain text");
     expect(prompt).toContain("2-3 short sentences");
     expect(prompt).toContain("Sender context:");
     expect(prompt).toContain("- Sender name: Jane Sender");
@@ -24,6 +25,8 @@ describe("draft prompt builders", () => {
   it("keeps neutral closing guidance when sender name is missing", () => {
     const prompt = getGenericDraftPrompt("acme.com", undefined, "jane@vc.com", "");
 
+    expect(prompt).toContain("Return JSON fields: subject and draft.");
+    expect(prompt).toContain("subject must be concise, readable, and plain text");
     expect(prompt).toContain("If sender name is missing, do not invent one.");
     expect(prompt).toContain("neutral closing");
   });

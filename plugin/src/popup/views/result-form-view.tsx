@@ -15,6 +15,7 @@ type ResultFormViewProps = {
 };
 
 const DEFAULT_MESSAGE = "hi, would you like to meet for a coffee? Daniel from Creandum";
+const DEFAULT_SUBJECT = "Quick intro";
 const DROPDOWN_EXIT_ANIMATION_MS = 120;
 
 const isUnknownRole = (role: string): boolean => role.trim().toLowerCase() === "unknown";
@@ -42,6 +43,24 @@ const resolveDraftForSelection = (
     return normalizedMultiDraft || DEFAULT_MESSAGE;
 };
 
+const resolveSubjectForSelection = (
+    selectedCandidates: Candidate[],
+    multiRecipientDraftSubject?: string,
+): string => {
+    const normalizedMultiSubject = multiRecipientDraftSubject?.trim() || "";
+
+    if (selectedCandidates.length > 1) {
+        return normalizedMultiSubject || DEFAULT_SUBJECT;
+    }
+
+    if (selectedCandidates.length === 1) {
+        const candidateSubject = selectedCandidates[0].draftSubject?.trim() || "";
+        return candidateSubject || normalizedMultiSubject || DEFAULT_SUBJECT;
+    }
+
+    return normalizedMultiSubject || DEFAULT_SUBJECT;
+};
+
 export const ResultFormView = ({
     fromEmail,
     result,
@@ -56,6 +75,12 @@ export const ResultFormView = ({
     const [selectedCandidates, setSelectedCandidates] = useState<Candidate[]>(() => {
         return firstCandidate ? [firstCandidate] : [];
     });
+    const [subject, setSubject] = useState(() =>
+        resolveSubjectForSelection(
+            firstCandidate ? [firstCandidate] : [],
+            result.multiRecipientDraftSubject,
+        ),
+    );
     const [message, setMessage] = useState(() =>
         resolveDraftForSelection(firstCandidate ? [firstCandidate] : [], result.multiRecipientDraft),
     );
@@ -110,7 +135,15 @@ export const ResultFormView = ({
         return emails;
     }, [selectedCandidates]);
 
-    const canSubmit = selectedRecipientEmails.length > 0 && message.trim().length > 0;
+    const canSubmit =
+        selectedRecipientEmails.length > 0 &&
+        subject.trim().length > 0 &&
+        message.trim().length > 0;
+
+    const selectedSubject = useMemo(
+        () => resolveSubjectForSelection(selectedCandidates, result.multiRecipientDraftSubject),
+        [selectedCandidates, result.multiRecipientDraftSubject],
+    );
 
     const selectedDraft = useMemo(
         () => resolveDraftForSelection(selectedCandidates, result.multiRecipientDraft),
@@ -136,6 +169,10 @@ export const ResultFormView = ({
             clearCloseTimeout();
         };
     }, [clearCloseTimeout]);
+
+    useEffect(() => {
+        setSubject(selectedSubject);
+    }, [selectedSubject]);
 
     useEffect(() => {
         setMessage(selectedDraft);
@@ -320,6 +357,16 @@ export const ResultFormView = ({
                     </div>
 
                     <div className="w-full">
+                        <Input
+                            id="subject"
+                            aria-label="Subject"
+                            placeholder="Subject"
+                            value={subject}
+                            onChange={(event) => setSubject(event.target.value)}
+                        />
+                    </div>
+
+                    <div className="w-full">
                         <Textarea
                             id="message"
                             aria-label="Message"
@@ -340,7 +387,7 @@ export const ResultFormView = ({
                             void onSubmit({
                                 fromEmail,
                                 toEmail: selectedRecipientEmails.join(", "),
-                                subject: `Intro from ${fromEmail}`,
+                                subject,
                                 message,
                             });
                         }}

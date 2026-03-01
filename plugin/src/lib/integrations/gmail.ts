@@ -2,6 +2,21 @@ import type { DraftAndSendRequest } from "../types";
 import { getTokenForApi, removeCachedToken } from "../auth/google";
 import { elapsedMs, logError, logInfo, previewText } from "../logging";
 
+const GMAIL_SENT_URL = "https://mail.google.com/mail/u/0/#sent";
+
+export const buildGmailMessageUrl = (sent: {
+  id?: string;
+  threadId?: string;
+}): string => {
+  const token = sent.threadId?.trim() || sent.id?.trim();
+
+  if (!token) {
+    return GMAIL_SENT_URL;
+  }
+
+  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(token)}`;
+};
+
 const base64UrlEncode = (value: string): string => {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
@@ -82,7 +97,7 @@ const gmailRequest = async <T>(
 
 export const createDraftAndSend = async (
   payload: DraftAndSendRequest
-): Promise<{ draftId: string; messageId: string }> => {
+): Promise<{ draftId: string; messageId: string; gmailUrl: string }> => {
   logInfo("gmail", "createDraftAndSend started", {
     fromEmail: payload.fromEmail,
     toEmail: payload.toEmail,
@@ -108,7 +123,7 @@ export const createDraftAndSend = async (
   );
   logInfo("gmail", "draft created", { draftId: draft.id });
 
-  const sent = await gmailRequest<{ id: string }>(
+  const sent = await gmailRequest<{ id?: string; threadId?: string }>(
     token,
     "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send",
     {
@@ -118,10 +133,18 @@ export const createDraftAndSend = async (
       })
     }
   );
-  logInfo("gmail", "draft sent", { draftId: draft.id, messageId: sent.id });
+  const messageId = sent.id?.trim() || sent.threadId?.trim() || "";
+  const gmailUrl = buildGmailMessageUrl(sent);
+  logInfo("gmail", "draft sent", {
+    draftId: draft.id,
+    messageId,
+    threadId: sent.threadId,
+    gmailUrl
+  });
 
   return {
     draftId: draft.id,
-    messageId: sent.id
+    messageId,
+    gmailUrl
   };
 };

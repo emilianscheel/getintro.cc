@@ -5,14 +5,21 @@ import { logError, logInfo, previewText } from "../logging";
 import type { Candidate } from "../types";
 
 const DRAFT_SOURCE_TEXT_MAX_CHARS = 20_000;
+export type EmailDraft = {
+  subject: string;
+  message: string;
+};
+
 const candidateDraftSchema = z.object({
   index: z.number().int().min(0),
+  subject: z.string().min(1),
   draft: z.string().min(1)
 });
 const candidateDraftResponseSchema = z.object({
   drafts: z.array(candidateDraftSchema).max(50)
 });
 const genericDraftResponseSchema = z.object({
+  subject: z.string().min(1),
   draft: z.string().min(1)
 });
 
@@ -77,8 +84,10 @@ export const getCandidateDraftPrompt = (
   customDraftPrompt?: string
 ): string => {
   return [
-    `Write short outreach email drafts for candidates at domain ${domain}.`,
-    "Return plain text email body only (no markdown, no subject line).",
+    `Write short outreach emails for candidates at domain ${domain}.`,
+    "Return JSON fields for each candidate: subject and draft.",
+    "subject must be concise, readable, and plain text (no markdown).",
+    "draft must be plain text email body only (no markdown).",
     "This plugin is for venture capital partners who want to reach out to startup founders and ask for a call.",
     "Each draft must be 2-3 short sentences and concise.",
     "Include a concrete meeting suggestion.",
@@ -103,8 +112,10 @@ export const getGenericDraftPrompt = (
   customDraftPrompt?: string
 ): string => {
   return [
-    `Write one short outreach email draft for multiple recipients related to domain ${domain}.`,
-    "Return plain text email body only (no markdown, no subject line).",
+    `Write one short outreach email for multiple recipients related to domain ${domain}.`,
+    "Return JSON fields: subject and draft.",
+    "subject must be concise, readable, and plain text (no markdown).",
+    "draft must be plain text email body only (no markdown).",
     "This plugin is for venture capital partners who want to reach out to startup founders and ask for a call.",
     "The draft must work for a list of recipients (not just one person).",
     "Keep it concise (2-3 short sentences).",
@@ -146,7 +157,7 @@ export const generateCandidateDrafts = async ({
   senderEmail,
   customDraftPrompt,
   signal
-}: GenerateCandidateDraftsInput): Promise<(string | undefined)[]> => {
+}: GenerateCandidateDraftsInput): Promise<(EmailDraft | undefined)[]> => {
   if (candidates.length === 0) {
     return [];
   }
@@ -184,20 +195,24 @@ export const generateCandidateDrafts = async ({
       abortSignal: signal
     });
 
-    const draftsByIndex = new Map<number, string>();
+    const draftsByIndex = new Map<number, EmailDraft>();
 
     for (const draftItem of object.drafts) {
       if (draftItem.index < 0 || draftItem.index >= candidates.length) {
         continue;
       }
 
-      const normalized = draftItem.draft.trim();
+      const subject = draftItem.subject.trim();
+      const message = draftItem.draft.trim();
 
-      if (!normalized) {
+      if (!subject || !message) {
         continue;
       }
 
-      draftsByIndex.set(draftItem.index, normalized);
+      draftsByIndex.set(draftItem.index, {
+        subject,
+        message
+      });
     }
 
     logInfo("mistral:drafts", "received candidate drafts response", {
@@ -221,7 +236,7 @@ export const generateGenericMultiRecipientDraft = async ({
   senderEmail,
   customDraftPrompt,
   signal
-}: GenerateGenericDraftInput): Promise<string | undefined> => {
+}: GenerateGenericDraftInput): Promise<EmailDraft | undefined> => {
   if (candidates.length <= 1) {
     return undefined;
   }
@@ -259,14 +274,23 @@ export const generateGenericMultiRecipientDraft = async ({
       abortSignal: signal
     });
 
+    const subject = object.subject.trim();
     const draft = object.draft.trim();
 
     logInfo("mistral:drafts", "received generic multi-recipient draft response", {
       recipients: candidates.length,
-      hasDraft: draft.length > 0
+      hasDraft: draft.length > 0,
+      hasSubject: subject.length > 0
     });
 
-    return draft || undefined;
+    if (!subject || !draft) {
+      return undefined;
+    }
+
+    return {
+      subject,
+      message: draft
+    };
   } catch (error) {
     logError("mistral:drafts", "generic multi-recipient draft request failed", error);
     throw error;

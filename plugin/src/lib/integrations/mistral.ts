@@ -5,7 +5,8 @@ import {
 } from "../ai/retrieveObject";
 import {
   generateCandidateDrafts,
-  generateGenericMultiRecipientDraft
+  generateGenericMultiRecipientDraft,
+  type EmailDraft
 } from "../ai/generateDrafts";
 
 export const extractCandidatesWithMistral = async (
@@ -55,7 +56,7 @@ export const generateCandidateEmailDraftsWithMistral = async (
   senderEmail?: string,
   customDraftPrompt?: string,
   signal?: AbortSignal
-): Promise<(string | undefined)[]> => {
+): Promise<(EmailDraft | undefined)[]> => {
   return generateCandidateDrafts({
     apiKey,
     domain,
@@ -77,7 +78,7 @@ export const generateGenericMultiRecipientEmailDraftWithMistral = async (
   senderEmail?: string,
   customDraftPrompt?: string,
   signal?: AbortSignal
-): Promise<string | undefined> => {
+): Promise<EmailDraft | undefined> => {
   return generateGenericMultiRecipientDraft({
     apiKey,
     domain,

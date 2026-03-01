@@ -42,6 +42,7 @@ describe("mergePipelineResultIntoPool", () => {
           source: "mistral"
         }
       ],
+      multiRecipientDraftSubject: "Existing subject",
       multiRecipientDraft: "Existing draft",
       updatedAtMs: 1
     };
@@ -66,6 +67,7 @@ describe("mergePipelineResultIntoPool", () => {
           source: "mistral"
         }
       ],
+      multiRecipientDraftSubject: "",
       multiRecipientDraft: "",
       partial: false,
       stoppedAtMs: 123
@@ -81,10 +83,11 @@ describe("mergePipelineResultIntoPool", () => {
       "https://example.com/about"
     ]);
     expect(merged.emailsRegex).toEqual(["a@example.com", "b@example.com"]);
+    expect(merged.multiRecipientDraftSubject).toBe("Existing subject");
     expect(merged.multiRecipientDraft).toBe("Existing draft");
   });
 
-  it("uses name+role fallback dedupe and keeps latest non-empty multi draft", () => {
+  it("uses name+role fallback dedupe and keeps latest non-empty multi draft subject and body", () => {
     const freshResult: PipelineResult = {
       domain: "example.com",
       visitedUrls: [],
@@ -97,6 +100,7 @@ describe("mergePipelineResultIntoPool", () => {
           source: "regex"
         }
       ],
+      multiRecipientDraftSubject: "Fresh subject",
       multiRecipientDraft: "Fresh draft",
       partial: false,
       stoppedAtMs: 100
@@ -113,10 +117,13 @@ describe("mergePipelineResultIntoPool", () => {
           source: "mistral"
         }
       ],
+      multiRecipientDraftSubject: "",
       multiRecipientDraft: ""
     });
 
+    expect(mergedOnce.multiRecipientDraftSubject).toBe("Fresh subject");
     expect(mergedOnce.multiRecipientDraft).toBe("Fresh draft");
+    expect(mergedTwice.multiRecipientDraftSubject).toBe("Fresh subject");
     expect(mergedTwice.multiRecipientDraft).toBe("Fresh draft");
     expect(mergedTwice.candidates).toHaveLength(1);
   });
