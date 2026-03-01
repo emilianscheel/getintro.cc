@@ -173,14 +173,17 @@ export const Newsletter = () => {
                             className="w-[95vw] md:w-[92vw] lg:w-[72vw] max-w-6xl rounded-2xl overflow-hidden bg-white/20 backdrop-blur-xl shadow-2xl ring-1 ring-white/20 cursor-default"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <Image
-                                src="https://github.com/emilianscheel/getintro.cc/blob/95cce7de466e2aff8bbf676a0e7948cecdf12108/demo.gif"
-                                alt="Demo video showing how getintro.cc works"
+                            <video
+                                src="https://raw.githubusercontent.com/emilianscheel/getintro.cc/main/demo.mp4"
+                                aria-label="Demo video showing how getintro.cc works"
                                 width={1882}
                                 height={1242}
                                 className="w-full h-auto"
-                                loading="eager"
-                                unoptimized
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                controls
                             />
                         </motion.div>
                     </motion.div>
