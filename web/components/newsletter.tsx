@@ -7,7 +7,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Cross1Icon } from "@radix-ui/react-icons";
 import { Kbd } from "./ui/kbd";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
+import { socialLinks } from "@/lib/constants";
+import Link from "next/link";
 
 const ChromeIcon = ({ className }: { className?: string }) => (
     <svg
@@ -144,12 +145,23 @@ export const Newsletter = () => {
                                 >
                                     Watch demo
                                 </button>
+
                                 <button
                                     onClick={() => setShowSetup(true)}
                                     className="text-sm font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none"
                                 >
                                     How to setup
                                 </button>
+
+                                <Link
+                                    href="https://github.com/emilianscheel/getintro.cc"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <button className="text-sm font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none">
+                                        View on GitHub
+                                    </button>
+                                </Link>
                             </div>
                         </motion.div>
                     </AnimatePresence>
@@ -176,7 +188,7 @@ export const Newsletter = () => {
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.95, opacity: 0 }}
                             transition={{ duration: 0.2 }}
-                            className="w-[50vw] max-w-4xl rounded-2xl overflow-hidden bg-white/20 backdrop-blur-xl shadow-2xl ring-1 ring-white/20 cursor-default"
+                            className="w-[95vw] md:w-[92vw] lg:w-[72vw] max-w-6xl rounded-2xl overflow-hidden bg-white/20 backdrop-blur-xl shadow-2xl ring-1 ring-white/20 cursor-default"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <Image
@@ -216,112 +228,66 @@ export const Newsletter = () => {
                             className="w-full max-w-lg rounded-2xl overflow-hidden bg-white/20 backdrop-blur-xl shadow-2xl ring-1 ring-white/20 p-6 cursor-default"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <Accordion type="single" collapsible className="w-full">
-                                <AccordionItem value="step-1" className="border-none">
-                                    <AccordionTrigger className="hover:no-underline text-white">
-                                        <span className="flex items-center gap-3">
-                                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-black text-sm font-medium">
-                                                1
-                                            </span>
-                                            <a
-                                                href="#"
-                                                className="underline underline-offset-4 hover:text-white/80"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                Download
-                                            </a>
-                                        </span>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="text-white/70 pl-9">
-                                        Click the download button to get the Chrome extension file.
-                                        The extension will be downloaded as a .zip file.
-                                    </AccordionContent>
-                                </AccordionItem>
-
-                                <AccordionItem value="step-2" className="border-none">
-                                    <AccordionTrigger className="hover:no-underline text-white">
-                                        <span className="flex items-center gap-3">
-                                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-black text-sm font-medium">
-                                                2
-                                            </span>
-                                            <span>Install</span>
-                                        </span>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="text-white/70 pl-9">
-                                        Unzip the file and load it in Chrome by going to
-                                        chrome://extensions, enabling Developer mode, and clicking
-                                        &quot;Load unpacked&quot;.
-                                    </AccordionContent>
-                                </AccordionItem>
-
-                                <AccordionItem value="step-3" className="border-none">
-                                    <AccordionTrigger className="hover:no-underline text-white">
-                                        <span className="flex items-center gap-3">
-                                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-black text-sm font-medium">
-                                                3
-                                            </span>
-                                            <span>Login with Google</span>
-                                        </span>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="text-white/70 pl-9">
-                                        Sign in with your Google account to enable Gmail integration
-                                        for sending outreach emails directly from the extension.
-                                    </AccordionContent>
-                                </AccordionItem>
-
-                                <AccordionItem value="step-4" className="border-none">
-                                    <AccordionTrigger className="hover:no-underline text-white">
-                                        <span className="flex items-center gap-3">
-                                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-black text-sm font-medium">
-                                                4
-                                            </span>
-                                            <span>
-                                                <a
-                                                    href="https://rocketreach.co/api"
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="underline underline-offset-4 hover:text-white/80"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
-                                                    Get
-                                                </a>{" "}
-                                                and paste RocketReach API key
-                                            </span>
-                                        </span>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="text-white/70 pl-9">
-                                        Create a RocketReach account and generate an API key from
-                                        your dashboard. Paste it in the extension settings to enable
-                                        contact lookup.
-                                    </AccordionContent>
-                                </AccordionItem>
-
-                                <AccordionItem value="step-5" className="border-none">
-                                    <AccordionTrigger className="hover:no-underline text-white">
-                                        <span className="flex items-center gap-3">
-                                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-black text-sm font-medium">
-                                                5
-                                            </span>
-                                            <span>
-                                                <a
-                                                    href="https://console.mistral.ai/api-keys"
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="underline underline-offset-4 hover:text-white/80"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
-                                                    Get
-                                                </a>{" "}
-                                                and paste Mistral API key
-                                            </span>
-                                        </span>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="text-white/70 pl-9">
-                                        Sign up for Mistral AI and generate an API key. This powers
-                                        the AI-generated outreach messages tailored to each founder.
-                                    </AccordionContent>
-                                </AccordionItem>
-                            </Accordion>
+                            <div className="w-full space-y-3">
+                                <div className="flex items-center gap-3 text-white">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm font-medium text-black">
+                                        1
+                                    </span>
+                                    <span>Download</span>
+                                </div>
+                                <div className="flex items-center gap-3 text-white">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm font-medium text-black">
+                                        2
+                                    </span>
+                                    <span>Install</span>
+                                </div>
+                                <div className="flex items-center gap-3 text-white">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm font-medium text-black">
+                                        3
+                                    </span>
+                                    <span>Login with Google</span>
+                                </div>
+                                <div className="flex items-center gap-3 text-white">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm font-medium text-black">
+                                        4
+                                    </span>
+                                    <span>
+                                        <a
+                                            href="https://rocketreach.co/api"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="underline underline-offset-4 hover:text-white/80"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            Get
+                                        </a>{" "}
+                                        and paste RocketReach API key
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-3 text-white">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm font-medium text-black">
+                                        5
+                                    </span>
+                                    <span>
+                                        <a
+                                            href="https://console.mistral.ai/api-keys"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="underline underline-offset-4 hover:text-white/80"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            Get
+                                        </a>{" "}
+                                        and paste Mistral API key
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-3 text-white">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-sm font-medium text-black">
+                                        6
+                                    </span>
+                                    <span>Get intro</span>
+                                </div>
+                            </div>
                         </motion.div>
                     </motion.div>
                 )}
