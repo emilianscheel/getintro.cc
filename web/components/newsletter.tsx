@@ -115,11 +115,16 @@ export const Newsletter = () => {
                         variants={landingItemVariants}
                         className="mt-6 flex flex-col items-center gap-4"
                     >
-                        <Button className={cn("relative px-8 gap-2")} shine>
-                            <ChromeIcon className="size-5" />
-                            <span className="inline-block">Download Extension</span>
-                            <Kbd className="ml-2 bg-foreground/30 text-foreground">enter</Kbd>
-                        </Button>
+                        <Link
+                            href="https://github.com/emilianscheel/getintro.cc/releases/download/0.1/getintro-extension-0.1.0-chrome.zip"
+                            target="_blank"
+                        >
+                            <Button className={cn("relative px-8 gap-2")} shine>
+                                <ChromeIcon className="size-5" />
+                                <span className="inline-block">Download Extension</span>
+                                <Kbd className="ml-2 bg-foreground/30 text-foreground">enter</Kbd>
+                            </Button>
+                        </Link>
 
                         <div className="flex items-center gap-6">
                             <button
