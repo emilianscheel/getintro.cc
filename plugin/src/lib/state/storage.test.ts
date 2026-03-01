@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getOnboardingState, patchOnboardingState } from "./storage";
+import {
+  getOnboardingState,
+  getPipelinePool,
+  getPipelinePools,
+  patchOnboardingState,
+  setPipelinePool
+} from "./storage";
 
 const ONBOARDING_STORAGE_KEY = "onboarding-state";
 
@@ -52,5 +58,44 @@ describe("onboarding storage", () => {
     });
 
     expect(updated.customDraftPrompt).toBe("Always suggest Zoom.");
+  });
+});
+
+describe("pipeline pools storage", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns empty map when no pools are stored", async () => {
+    setupChromeStorageMock();
+
+    const pools = await getPipelinePools();
+
+    expect(pools).toEqual({});
+  });
+
+  it("reads and writes a per-domain pool", async () => {
+    setupChromeStorageMock();
+
+    await setPipelinePool("example.com", {
+      domain: "example.com",
+      visitedUrls: ["https://example.com"],
+      emailsRegex: ["hello@example.com"],
+      candidates: [],
+      multiRecipientDraft: "Draft",
+      updatedAtMs: 1
+    });
+
+    const pool = await getPipelinePool("example.com");
+    const stored = await getPipelinePools();
+
+    expect(pool?.domain).toBe("example.com");
+    expect(stored).toEqual(
+      expect.objectContaining({
+        "example.com": expect.objectContaining({
+          emailsRegex: ["hello@example.com"]
+        })
+      })
+    );
   });
 });

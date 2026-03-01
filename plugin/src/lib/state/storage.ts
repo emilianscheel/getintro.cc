@@ -1,5 +1,6 @@
 import type {
   ApiProvider,
+  CachedDomainPipelinePool,
   EncryptedSecretEnvelope,
   OnboardingState,
   StoredSecrets
@@ -9,8 +10,11 @@ import { isMistralAvailable } from "../integrations/mistral-config";
 
 const STORAGE_KEYS = {
   ONBOARDING_STATE: "onboarding-state",
-  SECRETS: "secrets"
+  SECRETS: "secrets",
+  PIPELINE_POOLS: "pipeline-pools"
 } as const;
+
+export const PIPELINE_POOLS_STORAGE_KEY = STORAGE_KEYS.PIPELINE_POOLS;
 
 const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   started: false,
@@ -97,4 +101,29 @@ export const clearSecretEnvelope = async (provider: ApiProvider): Promise<void> 
   const secrets = await getSecrets();
   delete secrets[provider];
   await setSecrets(secrets);
+};
+
+type StoredPipelinePools = Record<string, CachedDomainPipelinePool>;
+
+export const getPipelinePools = async (): Promise<StoredPipelinePools> => {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.PIPELINE_POOLS);
+  return (stored[STORAGE_KEYS.PIPELINE_POOLS] as StoredPipelinePools | undefined) ?? {};
+};
+
+export const getPipelinePool = async (
+  domain: string
+): Promise<CachedDomainPipelinePool | undefined> => {
+  const pools = await getPipelinePools();
+  return pools[domain];
+};
+
+export const setPipelinePool = async (
+  domain: string,
+  pool: CachedDomainPipelinePool
+): Promise<void> => {
+  const pools = await getPipelinePools();
+  pools[domain] = pool;
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.PIPELINE_POOLS]: pools
+  });
 };

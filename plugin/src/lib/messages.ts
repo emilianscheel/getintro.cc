@@ -1,6 +1,7 @@
 import type {
   ApiProvider,
   DraftAndSendRequest,
+  PipelineRunMode,
   OnboardingState,
   PipelineResult
 } from "./types";
@@ -48,6 +49,7 @@ export type RuntimeRequest =
   | {
       type: typeof MESSAGE_TYPE.START_PIPELINE;
       countdownSeconds?: number;
+      mode?: PipelineRunMode;
     }
   | {
       type: typeof MESSAGE_TYPE.SUBMIT_EMAIL;

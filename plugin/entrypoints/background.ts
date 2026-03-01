@@ -1,11 +1,22 @@
-import type { Candidate, PipelineResult } from "../src/lib/types";
+import type {
+    CachedDomainPipelinePool,
+    Candidate,
+    PipelineResult,
+    PipelineRunMode,
+} from "../src/lib/types";
 import {
     MESSAGE_TYPE,
     isRuntimeRequest,
     type RuntimeRequest,
     type RuntimeResponse,
 } from "../src/lib/messages";
-import { getOnboardingState, patchOnboardingState } from "../src/lib/state/storage";
+import {
+    getOnboardingState,
+    getPipelinePool,
+    patchOnboardingState,
+    setPipelinePool,
+} from "../src/lib/state/storage";
+import { mergePipelineResultIntoPool } from "../src/lib/state/pipelinePool";
 import { saveEncryptedApiKey, loadApiKey, clearApiKey } from "../src/lib/security/secrets";
 import { signInWithGoogle, signOutGoogle } from "../src/lib/auth/google";
 import { crawlSite } from "../src/lib/crawl/crawler";
@@ -27,6 +38,7 @@ const MAX_DEPTH = 2 as const;
 const MAX_PAGES = 25;
 const MAX_ROCKETREACH_CANDIDATES = 8;
 const DISABLE_GMAIL_SEND_FOR_TESTING = true;
+const pipelineRefreshInFlight = new Set<string>();
 type ActiveTab = chrome.tabs.Tab & { id: number; url: string };
 
 const errorResponse = (error: string): RuntimeResponse => ({
@@ -52,6 +64,7 @@ const summarizeRuntimeRequest = (message: RuntimeRequest): Record<string, unknow
             return {
                 type: message.type,
                 countdownSeconds: message.countdownSeconds ?? DEFAULT_COUNTDOWN_SECONDS,
+                mode: message.mode ?? "cache_then_refresh",
             };
         case MESSAGE_TYPE.SUBMIT_EMAIL:
             return {
@@ -220,39 +233,44 @@ const getActiveTab = async (): Promise<ActiveTab> => {
     return tab as ActiveTab;
 };
 
-const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse> => {
+const poolToPipelineResult = (
+    pool: CachedDomainPipelinePool,
+    overrides?: Partial<PipelineResult>,
+): PipelineResult => {
+    return {
+        domain: pool.domain,
+        visitedUrls: pool.visitedUrls,
+        emailsRegex: pool.emailsRegex,
+        candidates: pool.candidates,
+        multiRecipientDraft: pool.multiRecipientDraft,
+        partial: false,
+        stoppedAtMs: 0,
+        ...overrides,
+    };
+};
+
+type RunFreshPipelineInput = {
+    countdownSeconds: number;
+    tab: ActiveTab;
+    pageUrl: URL;
+    onboarding: Awaited<ReturnType<typeof getOnboardingState>>;
+    mistralKey: string;
+    rocketreachKey: string | null;
+};
+
+const runFreshPipelineForDomain = async ({
+    countdownSeconds,
+    tab,
+    pageUrl,
+    onboarding,
+    mistralKey,
+    rocketreachKey,
+}: RunFreshPipelineInput): Promise<PipelineResult> => {
     const pipelineStartedAt = Date.now();
-    logInfo("pipeline", "starting pipeline", {
+    logInfo("pipeline:fresh", "starting fresh pipeline", {
         countdownSeconds,
         hardTimeoutEnabled: false,
-    });
-
-    const onboarding = await getOnboardingState();
-    logInfo("pipeline", "loaded onboarding state", onboarding);
-
-    if (!onboarding.completed) {
-        logInfo("pipeline", "pipeline blocked because onboarding is incomplete");
-        return errorResponse("Please complete onboarding before running the pipeline.");
-    }
-
-    const mistralKey = await loadApiKey("mistral");
-    const rocketreachKey = await loadApiKey("rocketreach");
-    logInfo("pipeline", "loaded API keys", {
-        mistralKeyPresent: Boolean(mistralKey),
-        rocketreachKeyPresent: Boolean(rocketreachKey),
-    });
-
-    if (!mistralKey) {
-        logInfo("pipeline", "pipeline blocked because Mistral API key is missing");
-        return errorResponse("Missing Mistral API key. Open settings and add your key.");
-    }
-
-    const tab = await getActiveTab();
-    const pageUrl = new URL(tab.url);
-    logInfo("pipeline", "resolved active tab", {
-        tabId: tab.id,
-        tabUrl: tab.url,
-        hostname: pageUrl.hostname,
+        domain: pageUrl.hostname,
     });
 
     const crawlStartedAt = Date.now();
@@ -424,7 +442,7 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
         }
     }
 
-    const result: PipelineResult = {
+    return {
         domain: pageUrl.hostname,
         visitedUrls: crawl.visitedUrls,
         emailsRegex: crawl.emailsRegex,
@@ -433,8 +451,125 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
         partial,
         stoppedAtMs: elapsedMs(pipelineStartedAt),
     };
+};
+
+const startPipeline = async (
+    countdownSeconds: number,
+    mode: PipelineRunMode,
+): Promise<RuntimeResponse> => {
+    logInfo("pipeline", "starting pipeline", {
+        countdownSeconds,
+        hardTimeoutEnabled: false,
+        mode,
+    });
+
+    const onboarding = await getOnboardingState();
+    logInfo("pipeline", "loaded onboarding state", onboarding);
+
+    if (!onboarding.completed) {
+        logInfo("pipeline", "pipeline blocked because onboarding is incomplete");
+        return errorResponse("Please complete onboarding before running the pipeline.");
+    }
+
+    const mistralKey = await loadApiKey("mistral");
+    const rocketreachKey = await loadApiKey("rocketreach");
+    logInfo("pipeline", "loaded API keys", {
+        mistralKeyPresent: Boolean(mistralKey),
+        rocketreachKeyPresent: Boolean(rocketreachKey),
+    });
+
+    if (!mistralKey) {
+        logInfo("pipeline", "pipeline blocked because Mistral API key is missing");
+        return errorResponse("Missing Mistral API key. Open settings and add your key.");
+    }
+
+    const tab = await getActiveTab();
+    const pageUrl = new URL(tab.url);
+    const domain = pageUrl.hostname;
+    logInfo("pipeline", "resolved active tab", {
+        tabId: tab.id,
+        tabUrl: tab.url,
+        hostname: domain,
+    });
+
+    if (mode === "cache_then_refresh") {
+        const cachedPool = await getPipelinePool(domain);
+
+        if (cachedPool) {
+            const refreshRunning = pipelineRefreshInFlight.has(domain);
+
+            if (!refreshRunning) {
+                pipelineRefreshInFlight.add(domain);
+                void (async () => {
+                    try {
+                        const freshResult = await runFreshPipelineForDomain({
+                            countdownSeconds,
+                            tab,
+                            pageUrl,
+                            onboarding,
+                            mistralKey,
+                            rocketreachKey,
+                        });
+                        const latestPool = await getPipelinePool(domain);
+                        const mergedPool = mergePipelineResultIntoPool(latestPool, freshResult);
+                        await setPipelinePool(domain, mergedPool);
+                        logInfo("pipeline:cache", "background refresh completed", {
+                            domain,
+                            candidates: mergedPool.candidates.length,
+                            visitedUrls: mergedPool.visitedUrls.length,
+                            regexEmails: mergedPool.emailsRegex.length,
+                        });
+                    } catch (error) {
+                        logError("pipeline:cache", "background refresh failed", {
+                            domain,
+                            error,
+                        });
+                    } finally {
+                        pipelineRefreshInFlight.delete(domain);
+                    }
+                })();
+            }
+
+            const cachedResult = poolToPipelineResult(cachedPool, {
+                servedFromCache: true,
+                backgroundRefreshStarted: true,
+            });
+
+            logInfo("pipeline:cache", "served cached result", {
+                domain,
+                candidates: cachedResult.candidates.length,
+                visitedUrls: cachedResult.visitedUrls.length,
+                regexEmails: cachedResult.emailsRegex.length,
+            });
+
+            return {
+                ok: true,
+                type: MESSAGE_TYPE.PIPELINE_RESULT,
+                result: cachedResult,
+            };
+        }
+    }
+
+    const freshResult = await runFreshPipelineForDomain({
+        countdownSeconds,
+        tab,
+        pageUrl,
+        onboarding,
+        mistralKey,
+        rocketreachKey,
+    });
+    const existingPool = await getPipelinePool(domain);
+    const mergedPool = mergePipelineResultIntoPool(existingPool, freshResult);
+    await setPipelinePool(domain, mergedPool);
+    const result = poolToPipelineResult(mergedPool, {
+        partial: freshResult.partial,
+        stoppedAtMs: freshResult.stoppedAtMs,
+        servedFromCache: false,
+        backgroundRefreshStarted: false,
+    });
+
     logInfo("pipeline", "pipeline completed", {
-        elapsedMs: elapsedMs(pipelineStartedAt),
+        elapsedMs: result.stoppedAtMs,
         partial: result.partial,
         stoppedAtMs: result.stoppedAtMs,
         visitedUrls: result.visitedUrls.length,
@@ -442,12 +577,13 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
         candidates: result.candidates.length,
         candidatesWithEmail: result.candidates.filter((candidate) => Boolean(candidate.email))
             .length,
+        mode,
     });
 
     return {
         ok: true,
         type: MESSAGE_TYPE.PIPELINE_RESULT,
-        result,
+        result: result,
     };
 };
 
@@ -538,7 +674,8 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
 
         case MESSAGE_TYPE.START_PIPELINE: {
             const countdownSeconds = message.countdownSeconds ?? DEFAULT_COUNTDOWN_SECONDS;
-            return startPipeline(countdownSeconds);
+            const mode = message.mode ?? "cache_then_refresh";
+            return startPipeline(countdownSeconds, mode);
         }
 
         case MESSAGE_TYPE.SUBMIT_EMAIL: {

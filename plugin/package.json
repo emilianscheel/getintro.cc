@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ai-sdk/mistral": "^1.0.5",
+    "@radix-ui/react-toast": "^1.2.15",
     "ai": "^4.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -10,4 +10,13 @@ describe("isRuntimeRequest", () => {
       })
     ).toBe(true);
   });
+
+  it("accepts START_PIPELINE requests with mode", () => {
+    expect(
+      isRuntimeRequest({
+        type: MESSAGE_TYPE.START_PIPELINE,
+        mode: "fresh_only"
+      })
+    ).toBe(true);
+  });
 });

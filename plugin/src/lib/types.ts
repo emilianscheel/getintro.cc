@@ -40,6 +40,8 @@ export type Candidate = {
   source: "mistral" | "rocketreach" | "mock" | "regex";
 };
 
+export type PipelineRunMode = "cache_then_refresh" | "fresh_only";
+
 export type PipelineResult = {
   domain: string;
   visitedUrls: string[];
@@ -48,6 +50,8 @@ export type PipelineResult = {
   multiRecipientDraft?: string;
   partial: boolean;
   stoppedAtMs: number;
+  servedFromCache?: boolean;
+  backgroundRefreshStarted?: boolean;
 };
 
 export type DraftAndSendRequest = {
@@ -61,4 +65,13 @@ export type RegexEmailDisplayContext = {
   email: string;
   sourceUrl?: string;
   sourcePageText?: string;
+};
+
+export type CachedDomainPipelinePool = {
+  domain: string;
+  visitedUrls: string[];
+  emailsRegex: string[];
+  candidates: Candidate[];
+  multiRecipientDraft?: string;
+  updatedAtMs: number;
 };

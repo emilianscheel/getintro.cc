@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
-import type { OnboardingState, OnboardingStep, PipelineResult } from "../lib/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  CachedDomainPipelinePool,
+  OnboardingState,
+  OnboardingStep,
+  PipelineResult,
+  PipelineRunMode
+} from "../lib/types";
 import { MESSAGE_TYPE } from "../lib/messages";
 import { sendRuntimeMessage } from "../lib/runtime";
 import { PRELOADED_MISTRAL_API_KEY } from "../lib/integrations/mistral-config";
+import { PIPELINE_POOLS_STORAGE_KEY } from "../lib/state/storage";
 import { PopupShell } from "../components/popup-shell";
+import { Toaster } from "../components/ui/toaster";
+import { toast } from "../lib/use-toast";
 import { OnboardingView } from "./views/onboarding-view";
 import { RunView } from "./views/run-view";
 import { ResultFormView } from "./views/result-form-view";
+import { appendUnseenCandidates } from "./pipelineResults";
 
 type Screen = "onboarding" | "run" | "running" | "results";
 
@@ -21,14 +31,23 @@ const initialState: OnboardingState = {
   completed: false
 };
 
+const resolveInitialScreen = (onboardingState: OnboardingState): Screen => {
+  if (!onboardingState.completed) {
+    return "onboarding";
+  }
+
+  return "run";
+};
+
 export const App = () => {
   const [state, setState] = useState<OnboardingState>(initialState);
   const [screen, setScreen] = useState<Screen>("onboarding");
   const [activeStep, setActiveStep] = useState<OnboardingStep>("google");
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [latestResult, setLatestResult] = useState<PipelineResult | null>(null);
+  const [pendingRefreshDomain, setPendingRefreshDomain] = useState<string | null>(null);
+  const latestResultRef = useRef<PipelineResult | null>(null);
   const [onboardingPrefill, setOnboardingPrefill] = useState<{
     mistral: string;
     rocketreach: string;
@@ -39,20 +58,23 @@ export const App = () => {
     customDraftPrompt: ""
   });
 
-  const resolveInitialScreen = (onboardingState: OnboardingState): Screen => {
-    if (!onboardingState.completed) {
-      return "onboarding";
-    }
+  const showErrorToast = useCallback((message: string) => {
+    toast({
+      title: "Error",
+      description: message
+    });
+  }, []);
 
-    return "run";
-  };
+  useEffect(() => {
+    latestResultRef.current = latestResult;
+  }, [latestResult]);
 
   useEffect(() => {
     void (async () => {
       const response = await sendRuntimeMessage({ type: MESSAGE_TYPE.GET_STATE });
 
       if (!response.ok || response.type !== "STATE") {
-        setError(response.ok ? "Failed to load state." : response.error);
+        showErrorToast(response.ok ? "Failed to load state." : response.error);
         return;
       }
 
@@ -63,7 +85,77 @@ export const App = () => {
       }));
       setScreen(resolveInitialScreen(response.state));
     })();
-  }, []);
+  }, [showErrorToast]);
+
+  useEffect(() => {
+    if (!pendingRefreshDomain) {
+      return;
+    }
+
+    let handled = false;
+
+    const applyPoolUpdate = (pools: Record<string, CachedDomainPipelinePool> | undefined) => {
+      if (handled) {
+        return;
+      }
+
+      const currentResult = latestResultRef.current;
+
+      if (!currentResult || currentResult.domain !== pendingRefreshDomain) {
+        return;
+      }
+
+      const domainPool = pools?.[pendingRefreshDomain];
+
+      if (!domainPool) {
+        return;
+      }
+
+      const { candidates, addedCount } = appendUnseenCandidates(
+        currentResult.candidates,
+        domainPool.candidates
+      );
+
+      if (addedCount > 0) {
+        setLatestResult({
+          ...currentResult,
+          candidates,
+          servedFromCache: false,
+          backgroundRefreshStarted: false
+        });
+      }
+
+      handled = true;
+      setPendingRefreshDomain(null);
+      toast({
+        title: "Background refresh finished",
+        description: `Added ${addedCount} new candidate${addedCount === 1 ? "" : "s"}.`
+      });
+    };
+
+    const onStorageChanged: Parameters<typeof chrome.storage.onChanged.addListener>[0] = (
+      changes,
+      areaName
+    ) => {
+      if (areaName !== "local") {
+        return;
+      }
+
+      const poolsChange = changes[PIPELINE_POOLS_STORAGE_KEY];
+
+      if (!poolsChange) {
+        return;
+      }
+
+      applyPoolUpdate(poolsChange.newValue as Record<string, CachedDomainPipelinePool> | undefined);
+    };
+
+    chrome.storage.onChanged.addListener(onStorageChanged);
+
+    return () => {
+      chrome.storage.onChanged.removeListener(onStorageChanged);
+    };
+  }, [pendingRefreshDomain]);
 
   const updateAuthState = (next: OnboardingState) => {
     setState(next);
@@ -74,23 +166,17 @@ export const App = () => {
 
     if (!next.completed && (screen === "run" || screen === "results")) {
       setScreen("onboarding");
-      return;
-    }
-
-    if (next.completed && screen === "onboarding") {
-      setScreen("run");
     }
   };
 
   const runAuthAction = async (action: () => Promise<void>): Promise<boolean> => {
     setBusy(true);
-    setError(null);
 
     try {
       await action();
       return true;
     } catch (actionError) {
-      setError(
+      showErrorToast(
         actionError instanceof Error ? actionError.message : "Unexpected action error"
       );
       return false;
@@ -166,14 +252,15 @@ export const App = () => {
     });
   };
 
-  const runPipeline = async () => {
-    setError(null);
+  const runPipeline = async (mode: PipelineRunMode) => {
     setBusy(true);
     setScreen("running");
+    setPendingRefreshDomain(null);
 
     try {
       const response = await sendRuntimeMessage({
-        type: MESSAGE_TYPE.START_PIPELINE
+        type: MESSAGE_TYPE.START_PIPELINE,
+        mode
       });
 
       if (!response.ok || response.type !== MESSAGE_TYPE.PIPELINE_RESULT) {
@@ -181,9 +268,12 @@ export const App = () => {
       }
 
       setLatestResult(response.result);
+      setPendingRefreshDomain(
+        response.result.backgroundRefreshStarted ? response.result.domain : null
+      );
       setScreen("results");
     } catch (pipelineError) {
-      setError(
+      showErrorToast(
         pipelineError instanceof Error
           ? pipelineError.message
           : "Pipeline failed unexpectedly."
@@ -200,7 +290,6 @@ export const App = () => {
     subject: string;
     message: string;
   }) => {
-    setError(null);
     setSubmitting(true);
 
     try {
@@ -213,39 +302,23 @@ export const App = () => {
         throw new Error(response.ok ? "Failed to send email." : response.error);
       }
     } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Failed to submit email."
+      showErrorToast(
+        submitError instanceof Error ? submitError.message : "Failed to submit email."
       );
     } finally {
       setSubmitting(false);
     }
   };
 
-  const banner = useMemo(() => {
-    if (error) {
-      return (
-        <div className="absolute inset-x-0 top-0 z-20 rounded-md border border-white/40 bg-black/20 px-3 py-2 text-xs text-white backdrop-blur-sm">
-          <span>{error}</span>
-        </div>
-      );
-    }
-
-    return null;
-  }, [error]);
-
   const restartOnboarding = () => {
-    setError(null);
     setActiveStep("google");
+    setPendingRefreshDomain(null);
     setScreen("onboarding");
   };
 
   return (
     <PopupShell>
       <div className="relative flex h-full w-full items-center justify-center py-2">
-        {banner}
-
         {screen === "onboarding" ? (
           <OnboardingView
             state={state}
@@ -267,7 +340,7 @@ export const App = () => {
         {screen === "run" || screen === "running" ? (
           <RunView
             running={screen === "running"}
-            onRun={runPipeline}
+            onRun={() => runPipeline("cache_then_refresh")}
             onRestartOnboarding={restartOnboarding}
           />
         ) : null}
@@ -278,9 +351,11 @@ export const App = () => {
             result={latestResult}
             submitting={submitting}
             onSubmit={submitEmail}
-            onRunAgain={runPipeline}
+            onRunAgain={() => runPipeline("fresh_only")}
           />
         ) : null}
+
+        <Toaster />
       </div>
     </PopupShell>
   );
