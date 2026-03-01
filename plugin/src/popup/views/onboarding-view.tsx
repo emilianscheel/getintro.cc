@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { OnboardingState, OnboardingStep } from "../../lib/types";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
 import { ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING } from "../../lib/integrations/email-enrichment/config";
-import {
-  isMistralAvailable
-} from "../../lib/integrations/mistral-config";
+import { isMistralAvailable } from "../../lib/integrations/mistral-config";
 
 type OnboardingViewProps = {
   state: OnboardingState;
@@ -14,15 +13,17 @@ type OnboardingViewProps = {
   onStepChange: (step: OnboardingStep) => void;
   onConnectGoogle: () => Promise<void>;
   onDisconnectGoogle: () => Promise<void>;
-  onSaveMistralKey: (value: string) => Promise<void>;
-  onSaveRocketReachKey: (value: string) => Promise<void>;
+  onSaveMistralKey: (value: string) => Promise<boolean>;
+  onSaveRocketReachKey: (value: string) => Promise<boolean>;
+  onSaveCustomDraftPrompt: (value: string) => Promise<boolean>;
   onComplete: () => void;
   busy: boolean;
   initialMistralKey: string;
   initialRocketReachKey: string;
+  initialCustomDraftPrompt: string;
 };
 
-const STEP_ORDER: OnboardingStep[] = ["google", "mistral", "rocketreach"];
+const STEP_ORDER: OnboardingStep[] = ["google", "mistral", "rocketreach", "customPrompt"];
 
 export const OnboardingView = ({
   state,
@@ -32,13 +33,16 @@ export const OnboardingView = ({
   onDisconnectGoogle,
   onSaveMistralKey,
   onSaveRocketReachKey,
+  onSaveCustomDraftPrompt,
   onComplete,
   busy,
   initialMistralKey,
-  initialRocketReachKey
+  initialRocketReachKey,
+  initialCustomDraftPrompt
 }: OnboardingViewProps) => {
   const [mistralKey, setMistralKey] = useState(initialMistralKey);
   const [rocketreachKey, setRocketreachKey] = useState(initialRocketReachKey);
+  const [customDraftPrompt, setCustomDraftPrompt] = useState(initialCustomDraftPrompt);
 
   useEffect(() => {
     setMistralKey(initialMistralKey);
@@ -47,6 +51,10 @@ export const OnboardingView = ({
   useEffect(() => {
     setRocketreachKey(initialRocketReachKey);
   }, [initialRocketReachKey]);
+
+  useEffect(() => {
+    setCustomDraftPrompt(initialCustomDraftPrompt);
+  }, [initialCustomDraftPrompt]);
 
   const stepCompletion = useMemo(
     () => ({
@@ -59,7 +67,6 @@ export const OnboardingView = ({
     [state.googleConnected, state.mistralKeySet, state.rocketreachKeySet]
   );
 
-  const previousCompletionRef = useRef(stepCompletion);
   const activeStepIndex = STEP_ORDER.indexOf(activeStep);
 
   const goForward = () => {
@@ -72,24 +79,6 @@ export const OnboardingView = ({
 
     onStepChange(nextStep);
   };
-
-  useEffect(() => {
-    const previousCompletion = previousCompletionRef.current;
-    const activeJustCompleted =
-      !previousCompletion[activeStep] && stepCompletion[activeStep];
-
-    if (activeJustCompleted) {
-      const nextIncompleteStep = STEP_ORDER.find((step) => !stepCompletion[step]);
-
-      if (!nextIncompleteStep) {
-        onComplete();
-      } else {
-        onStepChange(nextIncompleteStep);
-      }
-    }
-
-    previousCompletionRef.current = stepCompletion;
-  }, [activeStep, onComplete, onStepChange, stepCompletion]);
 
   return (
     <div className="flex h-full w-full items-center justify-center">
@@ -128,6 +117,23 @@ export const OnboardingView = ({
               value={rocketreachKey}
               onChange={(event) => setRocketreachKey(event.target.value)}
               autoComplete="off"
+            />
+          </div>
+        ) : null}
+
+        {activeStep === "customPrompt" ? (
+          <div className="space-y-2">
+            <Label
+              htmlFor="custom-draft-prompt"
+              className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-white"
+            >
+              Additional message prompt
+            </Label>
+            <Textarea
+              id="custom-draft-prompt"
+              value={customDraftPrompt}
+              onChange={(event) => setCustomDraftPrompt(event.target.value)}
+              className="h-32"
             />
           </div>
         ) : null}
@@ -176,11 +182,10 @@ export const OnboardingView = ({
                 return;
               }
 
-              const wasComplete = stepCompletion.mistral;
-              await onSaveMistralKey(mistralKey);
-              setMistralKey(mistralKey.trim());
+              const saved = await onSaveMistralKey(mistralKey);
 
-              if (wasComplete) {
+              if (saved) {
+                setMistralKey(mistralKey.trim());
                 goForward();
               }
             }}
@@ -204,16 +209,31 @@ export const OnboardingView = ({
                 return;
               }
 
-              const wasComplete = stepCompletion.rocketreach;
-              await onSaveRocketReachKey(rocketreachKey);
-              setRocketreachKey(rocketreachKey.trim());
+              const saved = await onSaveRocketReachKey(rocketreachKey);
 
-              if (wasComplete) {
+              if (saved) {
+                setRocketreachKey(rocketreachKey.trim());
                 goForward();
               }
             }}
           >
             Next
+          </Button>
+        ) : null}
+
+        {activeStep === "customPrompt" ? (
+          <Button
+            className="w-full"
+            disabled={busy}
+            onClick={async () => {
+              const saved = await onSaveCustomDraftPrompt(customDraftPrompt);
+
+              if (saved) {
+                onComplete();
+              }
+            }}
+          >
+            Finish
           </Button>
         ) : null}
       </div>

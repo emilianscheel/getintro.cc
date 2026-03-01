@@ -1,4 +1,4 @@
-import type { Candidate } from "../types";
+import type { Candidate, RegexEmailDisplayContext } from "../types";
 import {
   retrieveObject,
   retrieveRegexEmailDisplayCandidates
@@ -31,17 +31,17 @@ export const extractCandidatesWithMistral = async (
 export const retrieveRegexEmailDisplayCandidatesWithMistral = async (
   apiKey: string,
   domain: string,
-  regexEmails: string[],
+  regexEmailContexts: RegexEmailDisplayContext[],
   signal?: AbortSignal
 ): Promise<Candidate[]> => {
-  if (regexEmails.length === 0) {
+  if (regexEmailContexts.length === 0) {
     return [];
   }
 
   return retrieveRegexEmailDisplayCandidates({
     apiKey,
     domain,
-    regexEmails,
+    regexEmailContexts,
     signal
   });
 };
@@ -51,6 +51,9 @@ export const generateCandidateEmailDraftsWithMistral = async (
   domain: string,
   text: string,
   candidates: Candidate[],
+  senderName?: string,
+  senderEmail?: string,
+  customDraftPrompt?: string,
   signal?: AbortSignal
 ): Promise<(string | undefined)[]> => {
   return generateCandidateDrafts({
@@ -58,6 +61,9 @@ export const generateCandidateEmailDraftsWithMistral = async (
     domain,
     text,
     candidates,
+    senderName,
+    senderEmail,
+    customDraftPrompt,
     signal
   });
 };
@@ -67,6 +73,9 @@ export const generateGenericMultiRecipientEmailDraftWithMistral = async (
   domain: string,
   text: string,
   candidates: Candidate[],
+  senderName?: string,
+  senderEmail?: string,
+  customDraftPrompt?: string,
   signal?: AbortSignal
 ): Promise<string | undefined> => {
   return generateGenericMultiRecipientDraft({
@@ -74,6 +83,9 @@ export const generateGenericMultiRecipientEmailDraftWithMistral = async (
     domain,
     text,
     candidates,
+    senderName,
+    senderEmail,
+    customDraftPrompt,
     signal
   });
 };

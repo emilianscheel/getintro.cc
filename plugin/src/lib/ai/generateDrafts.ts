@@ -21,6 +21,9 @@ type GenerateCandidateDraftsInput = {
   domain: string;
   text: string;
   candidates: Candidate[];
+  senderName?: string;
+  senderEmail?: string;
+  customDraftPrompt?: string;
   signal?: AbortSignal;
 };
 
@@ -29,27 +32,91 @@ type GenerateGenericDraftInput = {
   domain: string;
   text: string;
   candidates: Candidate[];
+  senderName?: string;
+  senderEmail?: string;
+  customDraftPrompt?: string;
   signal?: AbortSignal;
 };
 
-const getCandidateDraftPrompt = (domain: string): string => {
+const getSenderContextLines = (senderName?: string, senderEmail?: string): string[] => {
+  const lines = [
+    "Sender context:",
+    `- Sender name: ${senderName?.trim() || "(unknown)"}`,
+    `- Sender email: ${senderEmail?.trim() || "(unknown)"}`
+  ];
+
+  if (senderName?.trim()) {
+    lines.push("Always end with a signoff that uses the sender name only.");
+    lines.push("Do not include sender email in the signoff.");
+  } else {
+    lines.push("If sender name is missing, do not invent one.");
+    lines.push("Use a neutral closing without a fabricated signature.");
+  }
+
+  return lines;
+};
+
+const getCustomPromptLines = (customDraftPrompt?: string): string[] => {
+  const normalized = customDraftPrompt?.trim();
+
+  if (!normalized) {
+    return [];
+  }
+
+  return [
+    "",
+    "Additional message prompt from the plugin user:",
+    normalized
+  ];
+};
+
+export const getCandidateDraftPrompt = (
+  domain: string,
+  senderName?: string,
+  senderEmail?: string,
+  customDraftPrompt?: string
+): string => {
   return [
     `Write short outreach email drafts for candidates at domain ${domain}.`,
     "Return plain text email body only (no markdown, no subject line).",
-    "Each draft should be at most 3 short sentences.",
+    "This plugin is for venture capital partners who want to reach out to startup founders and ask for a call.",
+    "Each draft must be 2-3 short sentences and concise.",
+    "Include a concrete meeting suggestion.",
     "Personalize by candidate name and role when available.",
     "If name or role is unknown, keep wording generic and natural.",
-    "Do not invent concrete facts that are not in the provided context."
+    "Do not invent concrete facts that are not in the provided context.",
+    "",
+    "Example drafts:",
+    '1) Hi {Name}, I am {SenderName}. I invest in early-stage startups and would love to learn what you are building. Would you be open to a 20-minute call next week?',
+    '2) Hi {Name}, I am {SenderName}. Your work caught my attention and I would value a brief intro conversation. Are you available for a quick call on Tuesday or Wednesday?',
+    '3) Hi {Name}, I am {SenderName}. I partner with founders at early stages and would like to exchange notes. Could we schedule a short call this week?',
+    "",
+    ...getSenderContextLines(senderName, senderEmail),
+    ...getCustomPromptLines(customDraftPrompt)
   ].join("\n");
 };
 
-const getGenericDraftPrompt = (domain: string): string => {
+export const getGenericDraftPrompt = (
+  domain: string,
+  senderName?: string,
+  senderEmail?: string,
+  customDraftPrompt?: string
+): string => {
   return [
     `Write one short outreach email draft for multiple recipients related to domain ${domain}.`,
     "Return plain text email body only (no markdown, no subject line).",
+    "This plugin is for venture capital partners who want to reach out to startup founders and ask for a call.",
     "The draft must work for a list of recipients (not just one person).",
-    "Keep it concise (2-4 short sentences).",
-    "Do not invent concrete facts that are not in the provided context."
+    "Keep it concise (2-3 short sentences).",
+    "Include a concrete meeting suggestion.",
+    "Do not invent concrete facts that are not in the provided context.",
+    "",
+    "Example drafts:",
+    '1) Hi all, I am {SenderName}. I invest in early-stage startups and would love to learn more about what you are each building. Would any of you be open to a short call next week?',
+    '2) Hi everyone, I am {SenderName}. I partner with founders at early stages and would value a brief intro chat. Are you available for a quick call on Tuesday or Wednesday?',
+    "",
+    ...getSenderContextLines(senderName, senderEmail),
+    ...getCustomPromptLines(customDraftPrompt)
   ].join("\n");
 };
 
@@ -75,6 +142,9 @@ export const generateCandidateDrafts = async ({
   domain,
   text,
   candidates,
+  senderName,
+  senderEmail,
+  customDraftPrompt,
   signal
 }: GenerateCandidateDraftsInput): Promise<(string | undefined)[]> => {
   if (candidates.length === 0) {
@@ -83,7 +153,12 @@ export const generateCandidateDrafts = async ({
 
   const modelId = "mistral-small-latest";
   const model = createMistral({ apiKey })(modelId);
-  const prompt = getCandidateDraftPrompt(domain);
+  const prompt = getCandidateDraftPrompt(
+    domain,
+    senderName,
+    senderEmail,
+    customDraftPrompt
+  );
   const requestPrompt = [
     prompt,
     "",
@@ -142,6 +217,9 @@ export const generateGenericMultiRecipientDraft = async ({
   domain,
   text,
   candidates,
+  senderName,
+  senderEmail,
+  customDraftPrompt,
   signal
 }: GenerateGenericDraftInput): Promise<string | undefined> => {
   if (candidates.length <= 1) {
@@ -150,7 +228,12 @@ export const generateGenericMultiRecipientDraft = async ({
 
   const modelId = "mistral-small-latest";
   const model = createMistral({ apiKey })(modelId);
-  const prompt = getGenericDraftPrompt(domain);
+  const prompt = getGenericDraftPrompt(
+    domain,
+    senderName,
+    senderEmail,
+    customDraftPrompt
+  );
   const requestPrompt = [
     prompt,
     "",

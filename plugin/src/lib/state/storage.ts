@@ -15,9 +15,11 @@ const STORAGE_KEYS = {
 const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   started: false,
   googleConnected: false,
+  googleName: undefined,
   googleEmail: undefined,
   mistralKeySet: false,
   rocketreachKeySet: false,
+  customDraftPrompt: undefined,
   completed: false
 };
 

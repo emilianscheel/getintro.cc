@@ -3,7 +3,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { extractEmails } from "../extract/emailRegex";
 import { logError, logInfo, previewText } from "../logging";
-import type { Candidate } from "../types";
+import type { Candidate, RegexEmailDisplayContext } from "../types";
 
 const MAX_EMAIL_CONTEXT_COUNT = 200;
 const STRICT_EMAIL_REGEX = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
@@ -30,7 +30,7 @@ type RetrieveObjectInput = {
 type RetrieveRegexEmailDisplayInput = {
   apiKey: string;
   domain: string;
-  regexEmails: string[];
+  regexEmailContexts: RegexEmailDisplayContext[];
   signal?: AbortSignal;
 };
 
@@ -105,6 +105,25 @@ const formatEmailList = (emails: string[]): string => {
   }
 
   return emails.map((email) => `- ${email}`).join("\n");
+};
+
+const formatRegexEmailContexts = (contexts: RegexEmailDisplayContext[]): string => {
+  if (contexts.length === 0) {
+    return "(none)";
+  }
+
+  return contexts
+    .map((context) => {
+      const sourceUrl = context.sourceUrl?.trim() || "(unknown)";
+      const sourcePageText = context.sourcePageText?.trim() || "(none)";
+      return [
+        `Email: ${context.email}`,
+        `Source URL: ${sourceUrl}`,
+        "Source page text:",
+        sourcePageText
+      ].join("\n");
+    })
+    .join("\n\n---\n\n");
 };
 
 export const retrieveObject = async ({
@@ -227,10 +246,32 @@ export const retrieveObject = async ({
 export const retrieveRegexEmailDisplayCandidates = async ({
   apiKey,
   domain,
-  regexEmails,
+  regexEmailContexts,
   signal
 }: RetrieveRegexEmailDisplayInput): Promise<Candidate[]> => {
-  const normalizedRegexEmails = dedupeEmails(regexEmails).slice(0, MAX_EMAIL_CONTEXT_COUNT);
+  const normalizedContextEntries: RegexEmailDisplayContext[] = [];
+
+  for (const context of regexEmailContexts) {
+    const normalizedEmail = normalizeEmail(context.email);
+
+    if (!normalizedEmail) {
+      continue;
+    }
+
+    normalizedContextEntries.push({
+      email: normalizedEmail,
+      sourceUrl: context.sourceUrl,
+      sourcePageText: context.sourcePageText
+    });
+
+    if (normalizedContextEntries.length >= MAX_EMAIL_CONTEXT_COUNT) {
+      break;
+    }
+  }
+
+  const normalizedRegexEmails = dedupeEmails(
+    normalizedContextEntries.map((context) => context.email)
+  );
 
   if (normalizedRegexEmails.length === 0) {
     return [];
@@ -255,7 +296,10 @@ export const retrieveRegexEmailDisplayCandidates = async ({
     prompt,
     "",
     "Regex-extracted emails:",
-    formatEmailList(normalizedRegexEmails)
+    formatEmailList(normalizedRegexEmails),
+    "",
+    "Regex email source contexts:",
+    formatRegexEmailContexts(normalizedContextEntries)
   ].join("\n");
 
   logInfo("mistral:regex-display", "sending request", {

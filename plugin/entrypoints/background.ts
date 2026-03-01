@@ -16,6 +16,7 @@ import {
     retrieveRegexEmailDisplayCandidatesWithMistral,
 } from "../src/lib/integrations/mistral";
 import { inferNameFromEmailAddress } from "../src/lib/extract/inferNameFromEmail";
+import { buildRegexEmailDisplayContexts } from "../src/lib/extract/regexEmailContext";
 import { enrichCandidatesWithEmailProviders } from "../src/lib/integrations/email-enrichment";
 import { createDraftAndSend } from "../src/lib/integrations/gmail";
 import { elapsedMs, logError, logInfo, previewText } from "../src/lib/logging";
@@ -41,6 +42,11 @@ const summarizeRuntimeRequest = (message: RuntimeRequest): Record<string, unknow
                 type: message.type,
                 provider: message.provider,
                 keyLength: message.value.length,
+            };
+        case MESSAGE_TYPE.SAVE_CUSTOM_DRAFT_PROMPT:
+            return {
+                type: message.type,
+                promptLength: message.value.length,
             };
         case MESSAGE_TYPE.START_PIPELINE:
             return {
@@ -273,6 +279,7 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
     let candidates: Candidate[] = [];
     let regexDisplayCandidates: Candidate[] = [];
     let partial = crawl.partial;
+    const regexEmailContexts = buildRegexEmailDisplayContexts(crawl.pages, crawl.emailsRegex);
 
     const hasMistralInput = crawl.combinedText.trim().length > 0 || crawl.emailsRegex.length > 0;
 
@@ -294,7 +301,7 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
             retrieveRegexEmailDisplayCandidatesWithMistral(
                 mistralKey,
                 pageUrl.hostname,
-                crawl.emailsRegex,
+                regexEmailContexts,
             ),
         ]);
 
@@ -375,6 +382,9 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
                 pageUrl.hostname,
                 crawl.combinedText,
                 mergedCandidates,
+                onboarding.googleName,
+                onboarding.googleEmail,
+                onboarding.customDraftPrompt,
             );
 
             candidatesWithDrafts = mergedCandidates.map((candidate, index) => ({
@@ -400,6 +410,9 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
                 pageUrl.hostname,
                 crawl.combinedText,
                 candidatesWithDrafts,
+                onboarding.googleName,
+                onboarding.googleEmail,
+                onboarding.customDraftPrompt,
             );
             logInfo("pipeline:mistral", "generic multi-recipient draft generation completed", {
                 elapsedMs: elapsedMs(genericDraftStartedAt),
@@ -459,11 +472,12 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
         }
 
         case MESSAGE_TYPE.START_GOOGLE_AUTH: {
-            const { email } = await signInWithGoogle();
+            const { email, name } = await signInWithGoogle();
             const state = await patchOnboardingState({
                 started: true,
                 googleConnected: true,
                 googleEmail: email,
+                googleName: name,
             });
 
             return {
@@ -478,6 +492,7 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
             const state = await patchOnboardingState({
                 googleConnected: false,
                 googleEmail: undefined,
+                googleName: undefined,
             });
 
             return {
@@ -499,6 +514,19 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
                 ...(message.provider === "mistral"
                     ? { mistralKeySet: true }
                     : { rocketreachKeySet: true }),
+            });
+
+            return {
+                ok: true,
+                type: MESSAGE_TYPE.AUTH_STATUS_CHANGED,
+                state,
+            };
+        }
+
+        case MESSAGE_TYPE.SAVE_CUSTOM_DRAFT_PROMPT: {
+            const state = await patchOnboardingState({
+                started: true,
+                customDraftPrompt: message.value,
             });
 
             return {

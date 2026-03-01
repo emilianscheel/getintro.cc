@@ -1,12 +1,14 @@
-export type OnboardingStep = "google" | "mistral" | "rocketreach";
+export type OnboardingStep = "google" | "mistral" | "rocketreach" | "customPrompt";
 export type ApiProvider = "mistral" | "rocketreach";
 
 export type OnboardingState = {
   started: boolean;
   googleConnected: boolean;
+  googleName?: string;
   googleEmail?: string;
   mistralKeySet: boolean;
   rocketreachKeySet: boolean;
+  customDraftPrompt?: string;
   completed: boolean;
 };
 
@@ -53,4 +55,10 @@ export type DraftAndSendRequest = {
   toEmail: string;
   subject: string;
   message: string;
+};
+
+export type RegexEmailDisplayContext = {
+  email: string;
+  sourceUrl?: string;
+  sourcePageText?: string;
 };

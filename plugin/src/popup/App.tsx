@@ -13,9 +13,11 @@ type Screen = "onboarding" | "run" | "running" | "results";
 const initialState: OnboardingState = {
   started: false,
   googleConnected: false,
+  googleName: undefined,
   googleEmail: undefined,
   mistralKeySet: false,
   rocketreachKeySet: false,
+  customDraftPrompt: undefined,
   completed: false
 };
 
@@ -30,9 +32,11 @@ export const App = () => {
   const [onboardingPrefill, setOnboardingPrefill] = useState<{
     mistral: string;
     rocketreach: string;
+    customDraftPrompt: string;
   }>({
     mistral: PRELOADED_MISTRAL_API_KEY ?? "",
-    rocketreach: ""
+    rocketreach: "",
+    customDraftPrompt: ""
   });
 
   const resolveInitialScreen = (onboardingState: OnboardingState): Screen => {
@@ -53,12 +57,20 @@ export const App = () => {
       }
 
       setState(response.state);
+      setOnboardingPrefill((current) => ({
+        ...current,
+        customDraftPrompt: response.state.customDraftPrompt ?? ""
+      }));
       setScreen(resolveInitialScreen(response.state));
     })();
   }, []);
 
   const updateAuthState = (next: OnboardingState) => {
     setState(next);
+    setOnboardingPrefill((current) => ({
+      ...current,
+      customDraftPrompt: next.customDraftPrompt ?? current.customDraftPrompt
+    }));
 
     if (!next.completed && (screen === "run" || screen === "results")) {
       setScreen("onboarding");
@@ -70,16 +82,18 @@ export const App = () => {
     }
   };
 
-  const runAuthAction = async (action: () => Promise<void>) => {
+  const runAuthAction = async (action: () => Promise<void>): Promise<boolean> => {
     setBusy(true);
     setError(null);
 
     try {
       await action();
+      return true;
     } catch (actionError) {
       setError(
         actionError instanceof Error ? actionError.message : "Unexpected action error"
       );
+      return false;
     } finally {
       setBusy(false);
     }
@@ -110,8 +124,11 @@ export const App = () => {
     });
   };
 
-  const saveApiKey = async (provider: "mistral" | "rocketreach", value: string) => {
-    await runAuthAction(async () => {
+  const saveApiKey = async (
+    provider: "mistral" | "rocketreach",
+    value: string
+  ): Promise<boolean> => {
+    return runAuthAction(async () => {
       const response = await sendRuntimeMessage({
         type: MESSAGE_TYPE.SAVE_API_KEY,
         provider,
@@ -126,6 +143,25 @@ export const App = () => {
       setOnboardingPrefill((current) => ({
         ...current,
         [provider]: value.trim()
+      }));
+    });
+  };
+
+  const saveCustomDraftPrompt = async (value: string): Promise<boolean> => {
+    return runAuthAction(async () => {
+      const response = await sendRuntimeMessage({
+        type: MESSAGE_TYPE.SAVE_CUSTOM_DRAFT_PROMPT,
+        value
+      });
+
+      if (!response.ok || response.type !== MESSAGE_TYPE.AUTH_STATUS_CHANGED) {
+        throw new Error(response.ok ? "Failed to save custom draft prompt." : response.error);
+      }
+
+      updateAuthState(response.state);
+      setOnboardingPrefill((current) => ({
+        ...current,
+        customDraftPrompt: value
       }));
     });
   };
@@ -220,9 +256,11 @@ export const App = () => {
             onDisconnectGoogle={onDisconnectGoogle}
             onSaveMistralKey={(value) => saveApiKey("mistral", value)}
             onSaveRocketReachKey={(value) => saveApiKey("rocketreach", value)}
+            onSaveCustomDraftPrompt={saveCustomDraftPrompt}
             onComplete={() => setScreen("run")}
             initialMistralKey={onboardingPrefill.mistral}
             initialRocketReachKey={onboardingPrefill.rocketreach}
+            initialCustomDraftPrompt={onboardingPrefill.customDraftPrompt}
           />
         ) : null}
 
