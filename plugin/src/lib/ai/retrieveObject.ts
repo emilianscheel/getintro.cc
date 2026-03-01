@@ -27,6 +27,24 @@ type RetrieveObjectInput = {
   signal?: AbortSignal;
 };
 
+type RetrieveRegexEmailDisplayInput = {
+  apiKey: string;
+  domain: string;
+  regexEmails: string[];
+  signal?: AbortSignal;
+};
+
+const regexDisplayCandidateSchema = z.object({
+  email: z.string().min(1),
+  name: z.string().min(1),
+  role: z.string().min(1),
+  score: z.number().optional()
+});
+
+const regexDisplayResponseSchema = z.object({
+  candidates: z.array(regexDisplayCandidateSchema).max(200)
+});
+
 const clampScore = (score: number): number => {
   if (Number.isNaN(score)) {
     return 0;
@@ -202,6 +220,86 @@ export const retrieveObject = async ({
     return candidates;
   } catch (error) {
     logError("mistral", "request failed", error);
+    throw error;
+  }
+};
+
+export const retrieveRegexEmailDisplayCandidates = async ({
+  apiKey,
+  domain,
+  regexEmails,
+  signal
+}: RetrieveRegexEmailDisplayInput): Promise<Candidate[]> => {
+  const normalizedRegexEmails = dedupeEmails(regexEmails).slice(0, MAX_EMAIL_CONTEXT_COUNT);
+
+  if (normalizedRegexEmails.length === 0) {
+    return [];
+  }
+
+  const modelId = "mistral-small-latest";
+  const model = createMistral({ apiKey })(modelId);
+  const providedEmails = new Set(normalizedRegexEmails);
+
+  const prompt = [
+    `You are enriching regex-extracted email addresses for domain ${domain}.`,
+    "Return one candidate per provided email with name, role, and optional confidence score.",
+    "Focus only on display quality for name and role. Do not invent new emails.",
+    "Use the exact email from the provided list.",
+    "If local-part is generic (info/contact/hello/support), infer person name from domain tokens when possible.",
+    "Example: info@vera-scheel.de -> name \"Vera Scheel\".",
+    "If role is uncertain, use \"unknown\".",
+    "Never add emails that are not in the provided list."
+  ].join("\n");
+
+  const requestPrompt = [
+    prompt,
+    "",
+    "Regex-extracted emails:",
+    formatEmailList(normalizedRegexEmails)
+  ].join("\n");
+
+  logInfo("mistral:regex-display", "sending request", {
+    model: modelId,
+    domain,
+    regexEmailsProvided: normalizedRegexEmails.length,
+    promptChars: requestPrompt.length,
+    promptPreview: previewText(requestPrompt, 1_500)
+  });
+
+  try {
+    const { object } = await generateObject({
+      model,
+      schema: regexDisplayResponseSchema,
+      prompt: requestPrompt,
+      abortSignal: signal
+    });
+
+    logInfo("mistral:regex-display", "received response", {
+      candidates: object.candidates.length,
+      payload: object
+    });
+
+    const mappedCandidates: Candidate[] = [];
+
+    for (const candidate of object.candidates) {
+      const normalizedEmail = normalizeEmail(candidate.email);
+
+      if (!normalizedEmail || !providedEmails.has(normalizedEmail)) {
+        continue;
+      }
+
+      mappedCandidates.push({
+        name: candidate.name.trim(),
+        role: candidate.role.trim(),
+        score: clampScore(candidate.score ?? 0.35),
+        email: normalizedEmail,
+        source: "mistral"
+      });
+    }
+
+    return mappedCandidates;
+  } catch (error) {
+    logError("mistral:regex-display", "request failed", error);
     throw error;
   }
 };

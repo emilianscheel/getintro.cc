@@ -1,5 +1,8 @@
 import type { Candidate } from "../types";
-import { retrieveObject } from "../ai/retrieveObject";
+import {
+  retrieveObject,
+  retrieveRegexEmailDisplayCandidates
+} from "../ai/retrieveObject";
 import {
   generateCandidateDrafts,
   generateGenericMultiRecipientDraft
@@ -20,6 +23,24 @@ export const extractCandidatesWithMistral = async (
     apiKey,
     domain,
     text,
+    regexEmails,
+    signal
+  });
+};
+
+export const retrieveRegexEmailDisplayCandidatesWithMistral = async (
+  apiKey: string,
+  domain: string,
+  regexEmails: string[],
+  signal?: AbortSignal
+): Promise<Candidate[]> => {
+  if (regexEmails.length === 0) {
+    return [];
+  }
+
+  return retrieveRegexEmailDisplayCandidates({
+    apiKey,
+    domain,
     regexEmails,
     signal
   });

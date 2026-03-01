@@ -2,14 +2,12 @@ import { LoaderCircle } from "lucide-react";
 import { Button } from "../../components/ui/button";
 
 type RunViewProps = {
-  countdown: number;
   running: boolean;
   onRun: () => Promise<void>;
   onRestartOnboarding: () => void;
 };
 
 export const RunView = ({
-  countdown,
   running,
   onRun,
   onRestartOnboarding
@@ -19,7 +17,6 @@ export const RunView = ({
       <div className="w-full space-y-4 text-center">
         {running ? (
           <div className="text-center">
-            <p className="text-5xl font-semibold tabular-nums text-white">{countdown}</p>
             <div className="mt-3 flex items-center justify-center text-xs text-white/80">
               <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" />
               Running...

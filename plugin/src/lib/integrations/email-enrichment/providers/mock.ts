@@ -43,7 +43,7 @@ export const mockEmailLookupProvider: EmailLookupProvider = {
   id: "mock",
   requiresApiKey: false,
   lookupEmails: async ({ name, domain, signal }) => {
-    if (signal.aborted) {
+    if (signal?.aborted) {
       throw new Error("Mock lookup aborted.");
     }
 

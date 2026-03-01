@@ -4,7 +4,7 @@ export type EmailLookupInput = {
   name: string;
   domain: string;
   role: string;
-  signal: AbortSignal;
+  signal?: AbortSignal;
   apiKey?: string;
 };
 

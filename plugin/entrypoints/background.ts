@@ -13,7 +13,9 @@ import {
     extractCandidatesWithMistral,
     generateCandidateEmailDraftsWithMistral,
     generateGenericMultiRecipientEmailDraftWithMistral,
+    retrieveRegexEmailDisplayCandidatesWithMistral,
 } from "../src/lib/integrations/mistral";
+import { inferNameFromEmailAddress } from "../src/lib/extract/inferNameFromEmail";
 import { enrichCandidatesWithEmailProviders } from "../src/lib/integrations/email-enrichment";
 import { createDraftAndSend } from "../src/lib/integrations/gmail";
 import { elapsedMs, logError, logInfo, previewText } from "../src/lib/logging";
@@ -101,25 +103,94 @@ const summarizeRuntimeResponse = (response: RuntimeResponse): Record<string, unk
     };
 };
 
-const mergeRegexEmails = (candidates: Candidate[], regexEmails: string[]): Candidate[] => {
-    const merged = [...candidates];
-    const knownEmails = new Set(
-        candidates
-            .map((candidate) => candidate.email?.toLowerCase())
-            .filter((email): email is string => Boolean(email)),
-    );
+const isUnknownValue = (value: string | undefined): boolean => {
+    if (!value) {
+        return true;
+    }
 
-    for (const email of regexEmails) {
-        if (knownEmails.has(email)) {
+    const normalized = value.trim().toLowerCase();
+    return normalized.length === 0 || normalized === "unknown" || normalized === "n/a";
+};
+
+const buildRegexDisplayCandidateByEmail = (candidates: Candidate[]): Map<string, Candidate> => {
+    const byEmail = new Map<string, Candidate>();
+
+    for (const candidate of candidates) {
+        const email = candidate.email?.trim().toLowerCase();
+
+        if (!email) {
             continue;
         }
 
+        const existing = byEmail.get(email);
+
+        if (!existing || candidate.score > existing.score) {
+            byEmail.set(email, candidate);
+        }
+    }
+
+    return byEmail;
+};
+
+const mergeRegexEmails = (
+    candidates: Candidate[],
+    regexEmails: string[],
+    regexDisplayCandidates: Candidate[],
+): Candidate[] => {
+    const regexDisplayByEmail = buildRegexDisplayCandidateByEmail(regexDisplayCandidates);
+
+    const enrichedExisting = candidates.map((candidate) => {
+        const normalizedEmail = candidate.email?.trim().toLowerCase();
+
+        if (!normalizedEmail) {
+            return candidate;
+        }
+
+        const regexDisplayCandidate = regexDisplayByEmail.get(normalizedEmail);
+
+        if (!regexDisplayCandidate) {
+            return candidate;
+        }
+
+        const nextName = isUnknownValue(candidate.name)
+            ? regexDisplayCandidate.name
+            : candidate.name;
+        const nextRole = isUnknownValue(candidate.role)
+            ? regexDisplayCandidate.role
+            : candidate.role;
+        const nextScore = Math.max(candidate.score, regexDisplayCandidate.score);
+
+        return {
+            ...candidate,
+            name: nextName,
+            role: nextRole,
+            score: nextScore,
+        };
+    });
+
+    const merged = [...enrichedExisting];
+    const knownEmails = new Set(
+        merged
+            .map((candidate) => candidate.email?.trim().toLowerCase())
+            .filter((email): email is string => Boolean(email)),
+    );
+
+    for (const rawEmail of regexEmails) {
+        const email = rawEmail.trim().toLowerCase();
+
+        if (!email || knownEmails.has(email)) {
+            continue;
+        }
+
+        const regexDisplayCandidate = regexDisplayByEmail.get(email);
+        const inferredName = regexDisplayCandidate?.name || inferNameFromEmailAddress(email);
+        const role = regexDisplayCandidate?.role?.trim() || "unknown";
+
         merged.push({
-            // Name inference should come from Mistral. Keep fallback neutral if unmatched.
-            name: "Unknown",
+            name: inferredName || "Unknown",
             email,
-            role: "unknown",
-            score: 0.25,
+            role,
+            score: Math.max(0.25, regexDisplayCandidate?.score ?? 0),
             source: "regex",
         });
         knownEmails.add(email);
@@ -143,29 +214,12 @@ const getActiveTab = async (): Promise<ActiveTab> => {
     return tab as ActiveTab;
 };
 
-const withAbortDeadline = async <T>(
-    deadlineAt: number,
-    fn: (signal: AbortSignal) => Promise<T>,
-): Promise<T> => {
-    const remaining = deadlineAt - Date.now();
-
-    if (remaining <= 0) {
-        throw new Error("Pipeline deadline reached.");
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), remaining);
-
-    try {
-        return await fn(controller.signal);
-    } finally {
-        clearTimeout(timeout);
-    }
-};
-
 const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse> => {
     const pipelineStartedAt = Date.now();
-    logInfo("pipeline", "starting pipeline", { countdownSeconds });
+    logInfo("pipeline", "starting pipeline", {
+        countdownSeconds,
+        hardTimeoutEnabled: false,
+    });
 
     const onboarding = await getOnboardingState();
     logInfo("pipeline", "loaded onboarding state", onboarding);
@@ -189,7 +243,6 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
 
     const tab = await getActiveTab();
     const pageUrl = new URL(tab.url);
-    const deadlineAt = Date.now() + countdownSeconds * 1000;
     logInfo("pipeline", "resolved active tab", {
         tabId: tab.id,
         tabUrl: tab.url,
@@ -201,14 +254,12 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
         startUrl: tab.url,
         maxDepth: MAX_DEPTH,
         maxPages: MAX_PAGES,
-        deadlineInMs: Math.max(0, deadlineAt - Date.now()),
     });
     const crawl = await crawlSite({
         tabId: tab.id,
         startUrl: tab.url,
         maxDepth: MAX_DEPTH,
         maxPages: MAX_PAGES,
-        deadlineAt,
     });
     logInfo("pipeline:crawl", "crawl completed", {
         elapsedMs: elapsedMs(crawlStartedAt),
@@ -220,48 +271,73 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
     });
 
     let candidates: Candidate[] = [];
-    let partial = crawl.partial || Date.now() >= deadlineAt;
+    let regexDisplayCandidates: Candidate[] = [];
+    let partial = crawl.partial;
 
     const hasMistralInput = crawl.combinedText.trim().length > 0 || crawl.emailsRegex.length > 0;
 
-    if (!partial && hasMistralInput) {
+    if (hasMistralInput) {
         const mistralStartedAt = Date.now();
         logInfo("pipeline:mistral", "candidate extraction started", {
             domain: pageUrl.hostname,
             combinedTextChars: crawl.combinedText.length,
-            deadlineInMs: Math.max(0, deadlineAt - Date.now()),
+            regexEmails: crawl.emailsRegex.length,
         });
 
-        try {
-            candidates = await withAbortDeadline(deadlineAt, (signal) =>
-                extractCandidatesWithMistral(
-                    mistralKey,
-                    pageUrl.hostname,
-                    crawl.combinedText,
-                    crawl.emailsRegex,
-                    signal,
-                ),
-            );
+        const [candidateExtraction, regexDisplayExtraction] = await Promise.allSettled([
+            extractCandidatesWithMistral(
+                mistralKey,
+                pageUrl.hostname,
+                crawl.combinedText,
+                crawl.emailsRegex,
+            ),
+            retrieveRegexEmailDisplayCandidatesWithMistral(
+                mistralKey,
+                pageUrl.hostname,
+                crawl.emailsRegex,
+            ),
+        ]);
+
+        if (candidateExtraction.status === "fulfilled") {
+            candidates = candidateExtraction.value;
             logInfo("pipeline:mistral", "candidate extraction completed", {
                 elapsedMs: elapsedMs(mistralStartedAt),
                 candidates: candidates.length,
                 preview: candidates.slice(0, 5),
             });
-        } catch (error) {
-            logError("pipeline:mistral", "candidate extraction failed", error);
+        } else {
+            logError(
+                "pipeline:mistral",
+                "candidate extraction failed",
+                candidateExtraction.reason,
+            );
             partial = true;
         }
-    } else if (!partial) {
+
+        if (regexDisplayExtraction.status === "fulfilled") {
+            regexDisplayCandidates = regexDisplayExtraction.value;
+            logInfo("pipeline:mistral", "regex display extraction completed", {
+                elapsedMs: elapsedMs(mistralStartedAt),
+                candidates: regexDisplayCandidates.length,
+                preview: regexDisplayCandidates.slice(0, 5),
+            });
+        } else {
+            logError(
+                "pipeline:mistral",
+                "regex display extraction failed",
+                regexDisplayExtraction.reason,
+            );
+        }
+    } else {
         logInfo("pipeline:mistral", "skipped candidate extraction because there was no crawl text or regex email input");
     }
 
-    if (!partial && candidates.length > 0) {
+    if (candidates.length > 0) {
         const enrichmentStartedAt = Date.now();
         logInfo("pipeline:enrichment", "email enrichment started", {
             domain: pageUrl.hostname,
             candidates: candidates.length,
             maxCandidates: MAX_ROCKETREACH_CANDIDATES,
-            deadlineInMs: Math.max(0, deadlineAt - Date.now()),
         });
 
         try {
@@ -269,7 +345,6 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
                 domain: pageUrl.hostname,
                 candidates,
                 maxCandidates: MAX_ROCKETREACH_CANDIDATES,
-                deadlineAt,
                 apiKeys: {
                     rocketreach: rocketreachKey,
                 },
@@ -284,13 +359,11 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
             logError("pipeline:enrichment", "email enrichment failed", error);
             partial = true;
         }
-    } else if (!partial) {
+    } else {
         logInfo("pipeline:enrichment", "skipped email enrichment because there were no candidates");
     }
 
-    partial = partial || Date.now() >= deadlineAt;
-
-    const mergedCandidates = mergeRegexEmails(candidates, crawl.emailsRegex);
+    const mergedCandidates = mergeRegexEmails(candidates, crawl.emailsRegex, regexDisplayCandidates);
     let candidatesWithDrafts = mergedCandidates;
     let multiRecipientDraft: string | undefined;
 
@@ -345,7 +418,7 @@ const startPipeline = async (countdownSeconds: number): Promise<RuntimeResponse>
         candidates: candidatesWithDrafts,
         multiRecipientDraft,
         partial,
-        stoppedAtMs: countdownSeconds * 1000 - Math.max(0, deadlineAt - Date.now()),
+        stoppedAtMs: elapsedMs(pipelineStartedAt),
     };
     logInfo("pipeline", "pipeline completed", {
         elapsedMs: elapsedMs(pipelineStartedAt),

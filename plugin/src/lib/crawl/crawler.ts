@@ -15,7 +15,6 @@ type CrawlSiteInput = {
   startUrl: string;
   maxDepth: 2;
   maxPages: number;
-  deadlineAt: number;
 };
 
 export type CrawlSiteResult = {
@@ -37,32 +36,16 @@ const HREF_REGEX = /href\s*=\s*["']([^"']+)["']/gi;
 const isHttpLike = (value: string): boolean =>
   value.startsWith("http://") || value.startsWith("https://");
 
-const withDeadlineFetch = async (
-  url: string,
-  deadlineAt: number
-): Promise<string> => {
-  const remaining = deadlineAt - Date.now();
-  if (remaining <= 0) {
-    throw new Error("Deadline reached before fetch.");
+const fetchPageHtml = async (url: string): Promise<string> => {
+  const response = await fetch(url, {
+    redirect: "follow"
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.status}`);
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), remaining);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow"
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${url}: ${response.status}`);
-    }
-
-    return await response.text();
-  } finally {
-    clearTimeout(timeout);
-  }
+  return await response.text();
 };
 
 const extractLinksFromHtml = (html: string, baseUrl: string): string[] => {
@@ -118,8 +101,7 @@ export const crawlSite = async ({
   tabId,
   startUrl,
   maxDepth,
-  maxPages,
-  deadlineAt
+  maxPages
 }: CrawlSiteInput): Promise<CrawlSiteResult> => {
   const snapshot = await snapshotCurrentTab(tabId);
   const normalizedStart = normalizeUrl(startUrl);
@@ -144,11 +126,6 @@ export const crawlSite = async ({
   let partial = false;
 
   while (queue.length > 0 && visited.size < maxPages) {
-    if (Date.now() >= deadlineAt) {
-      partial = true;
-      break;
-    }
-
     const current = queue.shift();
 
     if (!current) {
@@ -166,7 +143,7 @@ export const crawlSite = async ({
 
     if (!html) {
       try {
-        html = await withDeadlineFetch(current.url, deadlineAt);
+        html = await fetchPageHtml(current.url);
         links = extractLinksFromHtml(html, current.url);
       } catch {
         partial = true;

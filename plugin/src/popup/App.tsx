@@ -23,7 +23,6 @@ export const App = () => {
   const [state, setState] = useState<OnboardingState>(initialState);
   const [screen, setScreen] = useState<Screen>("onboarding");
   const [activeStep, setActiveStep] = useState<OnboardingStep>("google");
-  const [countdown, setCountdown] = useState(5);
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,22 +134,10 @@ export const App = () => {
     setError(null);
     setBusy(true);
     setScreen("running");
-    setCountdown(5);
-
-    const timer = window.setInterval(() => {
-      setCountdown((current) => {
-        if (current <= 0) {
-          window.clearInterval(timer);
-          return 0;
-        }
-        return current - 1;
-      });
-    }, 1000);
 
     try {
       const response = await sendRuntimeMessage({
-        type: MESSAGE_TYPE.START_PIPELINE,
-        countdownSeconds: 5
+        type: MESSAGE_TYPE.START_PIPELINE
       });
 
       if (!response.ok || response.type !== MESSAGE_TYPE.PIPELINE_RESULT) {
@@ -167,8 +154,6 @@ export const App = () => {
       );
       setScreen("run");
     } finally {
-      window.clearInterval(timer);
-      setCountdown(0);
       setBusy(false);
     }
   };
@@ -243,7 +228,6 @@ export const App = () => {
 
         {screen === "run" || screen === "running" ? (
           <RunView
-            countdown={countdown}
             running={screen === "running"}
             onRun={runPipeline}
             onRestartOnboarding={restartOnboarding}

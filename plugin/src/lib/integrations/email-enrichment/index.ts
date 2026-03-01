@@ -12,7 +12,7 @@ type EnrichCandidatesInput = {
   domain: string;
   candidates: Candidate[];
   maxCandidates: number;
-  deadlineAt: number;
+  signal?: AbortSignal;
   apiKeys: {
     rocketreach?: string | null;
   };
@@ -44,31 +44,11 @@ const getApiKeyForProvider = (
   return undefined;
 };
 
-const withCandidateLookupDeadline = async <T>(
-  deadlineAt: number,
-  fn: (signal: AbortSignal) => Promise<T>
-): Promise<T> => {
-  const remaining = deadlineAt - Date.now();
-
-  if (remaining <= 0) {
-    throw new Error("Email lookup deadline reached.");
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), remaining);
-
-  try {
-    return await fn(controller.signal);
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-
 export const enrichCandidatesWithEmailProviders = async ({
   domain,
   candidates,
   maxCandidates,
-  deadlineAt,
+  signal,
   apiKeys
 }: EnrichCandidatesInput): Promise<Candidate[]> => {
   const startedAt = Date.now();
@@ -85,14 +65,6 @@ export const enrichCandidatesWithEmailProviders = async ({
   const enriched: Candidate[] = [];
 
   for (const candidate of selected) {
-    if (Date.now() >= deadlineAt) {
-      logInfo("enrichment", "deadline reached before candidate lookup", {
-        candidate: candidate.name
-      });
-      enriched.push(candidate);
-      continue;
-    }
-
     let finalCandidate = candidate;
     logInfo("enrichment", "candidate lookup started", {
       candidate: candidate.name,
@@ -122,15 +94,13 @@ export const enrichCandidatesWithEmailProviders = async ({
       });
 
       try {
-        const emails = await withCandidateLookupDeadline(deadlineAt, (signal) =>
-          provider.lookupEmails({
-            name: candidate.name,
-            role: candidate.role,
-            domain,
-            signal,
-            apiKey
-          })
-        );
+        const emails = await provider.lookupEmails({
+          name: candidate.name,
+          role: candidate.role,
+          domain,
+          signal,
+          apiKey
+        });
         logInfo("enrichment", "provider response", {
           providerId,
           candidate: candidate.name,

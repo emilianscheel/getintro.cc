@@ -17,7 +17,6 @@ describe("enrichCandidatesWithEmailProviders", () => {
           }
         ],
         maxCandidates: 8,
-        deadlineAt: Date.now() + 5_000,
         apiKeys: {
           rocketreach: "dummy-key"
         }
