@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 import type { Candidate, DraftAndSendRequest, PipelineResult } from "../../lib/types";
 import { Button } from "../../components/ui/button";
@@ -74,6 +75,11 @@ export const ResultFormView = ({
     const [recipientOpen, setRecipientOpen] = useState(false);
     const [recipientVisible, setRecipientVisible] = useState(false);
     const [recipientQuery, setRecipientQuery] = useState("");
+    const [dropdownRect, setDropdownRect] = useState<{
+        top: number;
+        left: number;
+        width: number;
+    } | null>(null);
     const [selectedCandidates, setSelectedCandidates] = useState<Candidate[]>(() => {
         return firstCandidate ? [firstCandidate] : [];
     });
@@ -87,6 +93,7 @@ export const ResultFormView = ({
         resolveDraftForSelection(firstCandidate ? [firstCandidate] : [], result.multiRecipientDraft),
     );
     const recipientContainerRef = useRef<HTMLDivElement>(null);
+    const dropdownPanelRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const closeTimeoutRef = useRef<number | null>(null);
 
@@ -103,15 +110,32 @@ export const ResultFormView = ({
         clearCloseTimeout();
         closeTimeoutRef.current = window.setTimeout(() => {
             setRecipientVisible(false);
+            setDropdownRect(null);
             closeTimeoutRef.current = null;
         }, DROPDOWN_EXIT_ANIMATION_MS);
     }, [clearCloseTimeout]);
 
+    const updateDropdownRect = useCallback(() => {
+        const container = recipientContainerRef.current;
+
+        if (!container) {
+            return;
+        }
+
+        const rect = container.getBoundingClientRect();
+        setDropdownRect({
+            top: rect.bottom + 24,
+            left: rect.left,
+            width: rect.width,
+        });
+    }, []);
+
     const openRecipientDropdown = useCallback(() => {
         clearCloseTimeout();
+        updateDropdownRect();
         setRecipientVisible(true);
         setRecipientOpen(true);
-    }, [clearCloseTimeout]);
+    }, [clearCloseTimeout, updateDropdownRect]);
 
     const selectedRecipientEmails = useMemo(() => {
         const seen = new Set<string>();
@@ -185,8 +209,19 @@ export const ResultFormView = ({
             return;
         }
 
+        const handleViewportChange = () => {
+            updateDropdownRect();
+        };
+
+        window.addEventListener("resize", handleViewportChange);
+        window.addEventListener("scroll", handleViewportChange, true);
+
         const handleOutsideClick = (event: MouseEvent) => {
-            if (!recipientContainerRef.current?.contains(event.target as Node)) {
+            const targetNode = event.target as Node;
+            const clickedTrigger = recipientContainerRef.current?.contains(targetNode) ?? false;
+            const clickedDropdown = dropdownPanelRef.current?.contains(targetNode) ?? false;
+
+            if (!clickedTrigger && !clickedDropdown) {
                 closeRecipientDropdown();
             }
         };
@@ -201,10 +236,12 @@ export const ResultFormView = ({
         document.addEventListener("keydown", handleEscape);
 
         return () => {
+            window.removeEventListener("resize", handleViewportChange);
+            window.removeEventListener("scroll", handleViewportChange, true);
             document.removeEventListener("mousedown", handleOutsideClick);
             document.removeEventListener("keydown", handleEscape);
         };
-    }, [recipientOpen, closeRecipientDropdown]);
+    }, [recipientOpen, closeRecipientDropdown, updateDropdownRect]);
 
     const selectedEmailsLabel = useMemo(() => {
         if (selectedRecipientEmails.length === 0) {
@@ -272,10 +309,17 @@ export const ResultFormView = ({
                                 />
                             </button>
 
-                            {recipientVisible ? (
+                            {recipientVisible && dropdownRect
+                                ? createPortal(
                                 <div
+                                    ref={dropdownPanelRef}
+                                    style={{
+                                        top: dropdownRect.top,
+                                        left: dropdownRect.left,
+                                        width: dropdownRect.width,
+                                    }}
                                     className={cn(
-                                        "absolute z-20 mt-6 flex h-44 w-full flex-col overflow-hidden rounded-2xl border border-white/[0.55] bg-white/[0.22] p-2 text-white shadow-button backdrop-blur-2xl ring-1 ring-white/[0.42]",
+                                        "glass-dropdown-panel fixed z-[999] flex h-44 flex-col overflow-hidden rounded-2xl p-2 text-white",
                                         recipientOpen
                                             ? "dropdown-modal-enter"
                                             : "dropdown-modal-exit",
@@ -287,7 +331,7 @@ export const ResultFormView = ({
                                         placeholder="Search by name, role, or email"
                                         value={recipientQuery}
                                         onChange={(event) => setRecipientQuery(event.target.value)}
-                                        className="h-9 rounded-xl border border-white/[0.4] bg-white/[0.12] px-3 py-2 text-sm text-white shadow-none backdrop-blur-md ring-1 ring-white/[0.25] ring-offset-0 placeholder:text-white/75 hover:border-white/[0.5] hover:bg-white/[0.18] hover:ring-white/[0.35] focus-visible:border-white/[0.6] focus-visible:bg-white/[0.22] focus-visible:ring-white/[0.5] focus-visible:ring-offset-0"
+                                        className="h-9 rounded-xl border border-white/[0.55] bg-white/[0.2] px-3 py-2 text-sm text-white shadow-none backdrop-blur-md ring-1 ring-white/[0.35] ring-offset-0 placeholder:text-white/80 hover:border-white/[0.65] hover:bg-white/[0.26] hover:ring-white/[0.45] focus-visible:border-white/[0.72] focus-visible:bg-white/[0.28] focus-visible:ring-white/[0.55] focus-visible:ring-offset-0"
                                     />
 
                                     <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
@@ -354,7 +398,10 @@ export const ResultFormView = ({
                                         })}
                                     </div>
                                 </div>
-                            ) : null}
+                                ,
+                                document.body,
+                            )
+                                : null}
                         </div>
                     </div>
 
