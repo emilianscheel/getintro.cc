@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import type { Candidate, DraftAndSendRequest, PipelineResult } from "../../lib/types";
 import { Button } from "../../components/ui/button";
@@ -15,6 +15,7 @@ type ResultFormViewProps = {
 };
 
 const DEFAULT_MESSAGE = "hi, would you like to meet for a coffee? Daniel from Creandum";
+const DROPDOWN_EXIT_ANIMATION_MS = 120;
 
 const isUnknownRole = (role: string): boolean => role.trim().toLowerCase() === "unknown";
 
@@ -50,6 +51,7 @@ export const ResultFormView = ({
 }: ResultFormViewProps) => {
     const firstCandidate = result.candidates[0];
     const [recipientOpen, setRecipientOpen] = useState(false);
+    const [recipientVisible, setRecipientVisible] = useState(false);
     const [recipientQuery, setRecipientQuery] = useState("");
     const [selectedCandidates, setSelectedCandidates] = useState<Candidate[]>(() => {
         return firstCandidate ? [firstCandidate] : [];
@@ -59,6 +61,30 @@ export const ResultFormView = ({
     );
     const recipientContainerRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const closeTimeoutRef = useRef<number | null>(null);
+
+    const clearCloseTimeout = useCallback(() => {
+        if (closeTimeoutRef.current !== null) {
+            window.clearTimeout(closeTimeoutRef.current);
+            closeTimeoutRef.current = null;
+        }
+    }, []);
+
+    const closeRecipientDropdown = useCallback(() => {
+        setRecipientOpen(false);
+        setRecipientQuery("");
+        clearCloseTimeout();
+        closeTimeoutRef.current = window.setTimeout(() => {
+            setRecipientVisible(false);
+            closeTimeoutRef.current = null;
+        }, DROPDOWN_EXIT_ANIMATION_MS);
+    }, [clearCloseTimeout]);
+
+    const openRecipientDropdown = useCallback(() => {
+        clearCloseTimeout();
+        setRecipientVisible(true);
+        setRecipientOpen(true);
+    }, [clearCloseTimeout]);
 
     const selectedRecipientEmails = useMemo(() => {
         const seen = new Set<string>();
@@ -106,6 +132,12 @@ export const ResultFormView = ({
     }, [recipientOpen]);
 
     useEffect(() => {
+        return () => {
+            clearCloseTimeout();
+        };
+    }, [clearCloseTimeout]);
+
+    useEffect(() => {
         setMessage(selectedDraft);
     }, [selectedDraft]);
 
@@ -116,15 +148,13 @@ export const ResultFormView = ({
 
         const handleOutsideClick = (event: MouseEvent) => {
             if (!recipientContainerRef.current?.contains(event.target as Node)) {
-                setRecipientOpen(false);
-                setRecipientQuery("");
+                closeRecipientDropdown();
             }
         };
 
         const handleEscape = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
-                setRecipientOpen(false);
-                setRecipientQuery("");
+                closeRecipientDropdown();
             }
         };
 
@@ -135,7 +165,7 @@ export const ResultFormView = ({
             document.removeEventListener("mousedown", handleOutsideClick);
             document.removeEventListener("keydown", handleEscape);
         };
-    }, [recipientOpen]);
+    }, [recipientOpen, closeRecipientDropdown]);
 
     const selectedEmailsLabel = useMemo(() => {
         if (selectedRecipientEmails.length === 0) {
@@ -179,13 +209,12 @@ export const ResultFormView = ({
                                 aria-expanded={recipientOpen}
                                 className="flex h-9 w-full items-center justify-between rounded-full border border-white/50 bg-white/20 px-4 py-2 text-left text-sm font-medium text-white backdrop-blur-sm shadow-button transition-colors-and-shadows duration-300 ease-out ring-1 ring-white/10 ring-offset-2 ring-offset-white/10 hover:border-white/15 hover:bg-white/30 hover:ring-white/15 hover:ring-offset-4 hover:ring-offset-black/20 hover:shadow-button-hover focus-visible:border-white/15 focus-visible:bg-white/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/70 focus-visible:ring-offset-4 focus-visible:ring-offset-black/20 focus-visible:shadow-button-hover"
                                 onClick={() => {
-                                    setRecipientOpen((current) => {
-                                        if (current) {
-                                            setRecipientQuery("");
-                                        }
+                                    if (recipientOpen) {
+                                        closeRecipientDropdown();
+                                        return;
+                                    }
 
-                                        return !current;
-                                    });
+                                    openRecipientDropdown();
                                 }}
                             >
                                 <span
@@ -204,20 +233,27 @@ export const ResultFormView = ({
                                 />
                             </button>
 
-                            {recipientOpen ? (
-                                <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-white/70 bg-white/90 p-2 text-zinc-900 shadow-button backdrop-blur-xl ring-1 ring-black/5">
+                            {recipientVisible ? (
+                                <div
+                                    className={cn(
+                                        "absolute z-20 mt-6 flex h-44 w-full flex-col overflow-hidden rounded-2xl border border-white/[0.45] bg-transparent p-2 text-white shadow-button backdrop-blur-2xl ring-1 ring-white/[0.35]",
+                                        recipientOpen
+                                            ? "dropdown-modal-enter"
+                                            : "dropdown-modal-exit",
+                                    )}
+                                >
                                     <Input
                                         ref={searchInputRef}
                                         aria-label="Search recipients"
                                         placeholder="Search by name, role, or email"
                                         value={recipientQuery}
                                         onChange={(event) => setRecipientQuery(event.target.value)}
-                                        className="h-9 rounded-xl border border-zinc-200 bg-white/90 px-3 py-2 text-sm text-zinc-900 shadow-none ring-1 ring-black/5 ring-offset-0 placeholder:text-zinc-500 hover:border-zinc-300 hover:bg-white hover:ring-black/10 focus-visible:border-zinc-300 focus-visible:bg-white focus-visible:ring-black/20 focus-visible:ring-offset-0"
+                                        className="h-9 rounded-xl border border-white/[0.4] bg-white/[0.12] px-3 py-2 text-sm text-white shadow-none backdrop-blur-md ring-1 ring-white/[0.25] ring-offset-0 placeholder:text-white/75 hover:border-white/[0.5] hover:bg-white/[0.18] hover:ring-white/[0.35] focus-visible:border-white/[0.6] focus-visible:bg-white/[0.22] focus-visible:ring-white/[0.5] focus-visible:ring-offset-0"
                                     />
 
-                                    <div className="mt-2 max-h-52 overflow-y-auto pr-1">
+                                    <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
                                         {filteredCandidates.length === 0 ? (
-                                            <p className="px-3 py-5 text-center text-xs text-zinc-500">
+                                            <p className="px-3 py-5 text-center text-xs text-white/90">
                                                 No recipients match your search.
                                             </p>
                                         ) : null}
@@ -230,9 +266,9 @@ export const ResultFormView = ({
                                                     key={`${candidate.name}-${candidate.email ?? "none"}-${index}`}
                                                     type="button"
                                                     className={cn(
-                                                        "mb-1 w-full rounded-xl border border-transparent bg-white/60 px-3 py-2 text-left transition-colors-and-shadows duration-200 last:mb-0 hover:border-zinc-200 hover:bg-white hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300/60",
+                                                        "mb-1 w-full rounded-xl border border-transparent bg-white/[0.1] px-3 py-2 text-left backdrop-blur-md transition-colors duration-200 last:mb-0 hover:border-white/[0.35] hover:bg-white/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/55",
                                                         isSelected
-                                                            ? "border-zinc-200 bg-white shadow-soft"
+                                                            ? "border-white/[0.45] bg-white/[0.2]"
                                                             : "",
                                                     )}
                                                     onClick={() => {
@@ -251,23 +287,23 @@ export const ResultFormView = ({
                                                     <div className="flex items-start justify-between gap-2">
                                                         <div className="min-w-0">
                                                             <p className="flex min-w-0 items-center gap-1.5">
-                                                                <span className="truncate text-sm font-medium text-zinc-900">
+                                                                <span className="truncate text-sm font-medium text-white">
                                                                     {candidate.name}
                                                                 </span>
                                                                 {hasDisplayRole(candidate) ? (
-                                                                    <span className="truncate text-[10px] text-zinc-500">
+                                                                    <span className="truncate text-[10px] text-white/75">
                                                                         {candidate.role.trim()}
                                                                     </span>
                                                                 ) : null}
                                                             </p>
-                                                            <p className="truncate text-xs text-zinc-500">
+                                                            <p className="truncate text-xs text-white/80">
                                                                 {candidate.email ??
                                                                     "no email found"}
                                                             </p>
                                                         </div>
                                                         <Check
                                                             className={cn(
-                                                                "h-4 w-4 shrink-0 text-zinc-600 transition-opacity",
+                                                                "h-4 w-4 shrink-0 text-white/90 transition-opacity",
                                                                 isSelected
                                                                     ? "opacity-100"
                                                                     : "opacity-0",
