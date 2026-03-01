@@ -1,14 +1,8 @@
-import {
-  Toast,
-  ToastClose,
-  ToastDescription,
-  ToastTitle,
-  ToastViewport
-} from "./toast";
+import { Toast, ToastDescription, ToastViewport } from "./toast";
 import { useToast } from "../../lib/use-toast";
 
 export const Toaster = () => {
-  const { toasts, dismiss } = useToast();
+  const { toasts } = useToast();
 
   if (toasts.length === 0) {
     return null;
@@ -18,13 +12,7 @@ export const Toaster = () => {
     <ToastViewport>
       {toasts.map((item) => (
         <Toast key={item.id} open={item.open}>
-          {item.title ? <ToastTitle>{item.title}</ToastTitle> : null}
-          {item.description ? (
-            <ToastDescription className={item.title ? "mt-1" : ""}>
-              {item.description}
-            </ToastDescription>
-          ) : null}
-          <ToastClose onClick={() => dismiss(item.id)} />
+          {item.description ? <ToastDescription>{item.description}</ToastDescription> : null}
         </Toast>
       ))}
     </ToastViewport>

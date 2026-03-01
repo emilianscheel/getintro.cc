@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clearAllPipelinePools,
+  clearPipelinePool,
+  getPipelineCacheEpoch,
   getOnboardingState,
   getPipelinePool,
   getPipelinePools,
@@ -97,5 +100,53 @@ describe("pipeline pools storage", () => {
         })
       })
     );
+  });
+
+  it("clears one domain pool and bumps cache epoch", async () => {
+    setupChromeStorageMock();
+
+    await setPipelinePool("example.com", {
+      domain: "example.com",
+      visitedUrls: [],
+      emailsRegex: [],
+      candidates: [],
+      updatedAtMs: 1
+    });
+    await setPipelinePool("other.com", {
+      domain: "other.com",
+      visitedUrls: [],
+      emailsRegex: [],
+      candidates: [],
+      updatedAtMs: 1
+    });
+
+    const epochBefore = await getPipelineCacheEpoch();
+    await clearPipelinePool("example.com");
+    const epochAfter = await getPipelineCacheEpoch();
+    const pools = await getPipelinePools();
+
+    expect(epochAfter).toBe(epochBefore + 1);
+    expect(pools["example.com"]).toBeUndefined();
+    expect(pools["other.com"]).toBeDefined();
+  });
+
+  it("clears all pools and bumps cache epoch", async () => {
+    setupChromeStorageMock();
+
+    await setPipelinePool("example.com", {
+      domain: "example.com",
+      visitedUrls: [],
+      emailsRegex: [],
+      candidates: [],
+      updatedAtMs: 1
+    });
+
+    const epochBefore = await getPipelineCacheEpoch();
+    await clearAllPipelinePools();
+    const epochAfter = await getPipelineCacheEpoch();
+    const pools = await getPipelinePools();
+
+    expect(epochAfter).toBe(epochBefore + 1);
+    expect(pools).toEqual({});
   });
 });

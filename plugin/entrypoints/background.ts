@@ -11,12 +11,19 @@ import {
     type RuntimeResponse,
 } from "../src/lib/messages";
 import {
+    clearAllPipelinePools,
+    clearPipelinePool,
+    getPipelineCacheEpoch,
     getOnboardingState,
     getPipelinePool,
     patchOnboardingState,
     setPipelinePool,
 } from "../src/lib/state/storage";
 import { mergePipelineResultIntoPool } from "../src/lib/state/pipelinePool";
+import {
+    getHttpHostnameFromUrl,
+    shouldPersistPipelinePoolForEpoch,
+} from "../src/lib/state/pipelineCacheControl";
 import { saveEncryptedApiKey, loadApiKey, clearApiKey } from "../src/lib/security/secrets";
 import { signInWithGoogle, signOutGoogle } from "../src/lib/auth/google";
 import { crawlSite } from "../src/lib/crawl/crawler";
@@ -49,6 +56,10 @@ const errorResponse = (error: string): RuntimeResponse => ({
 
 const summarizeRuntimeRequest = (message: RuntimeRequest): Record<string, unknown> => {
     switch (message.type) {
+        case MESSAGE_TYPE.GET_ACTIVE_TAB_CACHE_STATUS:
+            return {
+                type: message.type,
+            };
         case MESSAGE_TYPE.SAVE_API_KEY:
             return {
                 type: message.type,
@@ -59,6 +70,12 @@ const summarizeRuntimeRequest = (message: RuntimeRequest): Record<string, unknow
             return {
                 type: message.type,
                 promptLength: message.value.length,
+            };
+        case MESSAGE_TYPE.CLEAR_PIPELINE_CACHE:
+            return {
+                type: message.type,
+                scope: message.scope,
+                domain: message.scope === "domain" ? message.domain : undefined,
             };
         case MESSAGE_TYPE.START_PIPELINE:
             return {
@@ -111,6 +128,24 @@ const summarizeRuntimeResponse = (response: RuntimeResponse): Record<string, unk
                 regexEmails: response.result.emailsRegex.length,
                 candidates: response.result.candidates.length,
             },
+        };
+    }
+
+    if (response.type === MESSAGE_TYPE.ACTIVE_TAB_CACHE_STATUS) {
+        return {
+            ok: true,
+            type: response.type,
+            hostname: response.hostname,
+            hasCache: response.hasCache,
+        };
+    }
+
+    if (response.type === MESSAGE_TYPE.PIPELINE_CACHE_CLEARED) {
+        return {
+            ok: true,
+            type: response.type,
+            scope: response.scope,
+            domain: response.domain,
         };
     }
 
@@ -231,6 +266,25 @@ const getActiveTab = async (): Promise<ActiveTab> => {
     }
 
     return tab as ActiveTab;
+};
+
+const getActiveTabCacheStatus = async (): Promise<{
+    hostname?: string;
+    hasCache: boolean;
+}> => {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs[0];
+    const hostname = getHttpHostnameFromUrl(tab?.url);
+
+    if (!hostname) {
+        return { hasCache: false };
+    }
+
+    const pool = await getPipelinePool(hostname);
+    return {
+        hostname,
+        hasCache: Boolean(pool),
+    };
 };
 
 const poolToPipelineResult = (
@@ -457,10 +511,12 @@ const startPipeline = async (
     countdownSeconds: number,
     mode: PipelineRunMode,
 ): Promise<RuntimeResponse> => {
+    const runEpoch = await getPipelineCacheEpoch();
     logInfo("pipeline", "starting pipeline", {
         countdownSeconds,
         hardTimeoutEnabled: false,
         mode,
+        runEpoch,
     });
 
     const onboarding = await getOnboardingState();
@@ -510,6 +566,17 @@ const startPipeline = async (
                             mistralKey,
                             rocketreachKey,
                         });
+                        const currentEpoch = await getPipelineCacheEpoch();
+
+                        if (!shouldPersistPipelinePoolForEpoch(runEpoch, currentEpoch)) {
+                            logInfo("pipeline:cache", "skipping stale background refresh write", {
+                                domain,
+                                runEpoch,
+                                currentEpoch,
+                            });
+                            return;
+                        }
+
                         const latestPool = await getPipelinePool(domain);
                         const mergedPool = mergePipelineResultIntoPool(latestPool, freshResult);
                         await setPipelinePool(domain, mergedPool);
@@ -558,6 +625,26 @@ const startPipeline = async (
         mistralKey,
         rocketreachKey,
     });
+    const currentEpoch = await getPipelineCacheEpoch();
+
+    if (!shouldPersistPipelinePoolForEpoch(runEpoch, currentEpoch)) {
+        logInfo("pipeline", "skipping stale fresh pipeline cache write", {
+            domain,
+            runEpoch,
+            currentEpoch,
+        });
+
+        return {
+            ok: true,
+            type: MESSAGE_TYPE.PIPELINE_RESULT,
+            result: {
+                ...freshResult,
+                servedFromCache: false,
+                backgroundRefreshStarted: false,
+            },
+        };
+    }
+
     const existingPool = await getPipelinePool(domain);
     const mergedPool = mergePipelineResultIntoPool(existingPool, freshResult);
     await setPipelinePool(domain, mergedPool);
@@ -596,6 +683,25 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
                 type: "STATE",
                 state,
             };
+        }
+
+        case MESSAGE_TYPE.GET_ACTIVE_TAB_CACHE_STATUS: {
+            try {
+                const status = await getActiveTabCacheStatus();
+                return {
+                    ok: true,
+                    type: MESSAGE_TYPE.ACTIVE_TAB_CACHE_STATUS,
+                    hostname: status.hostname,
+                    hasCache: status.hasCache,
+                };
+            } catch (error) {
+                logError("pipeline:cache", "failed to get active tab cache status", error);
+                return {
+                    ok: true,
+                    type: MESSAGE_TYPE.ACTIVE_TAB_CACHE_STATUS,
+                    hasCache: false,
+                };
+            }
         }
 
         case MESSAGE_TYPE.MARK_STARTED: {
@@ -669,6 +775,31 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
                 ok: true,
                 type: MESSAGE_TYPE.AUTH_STATUS_CHANGED,
                 state,
+            };
+        }
+
+        case MESSAGE_TYPE.CLEAR_PIPELINE_CACHE: {
+            if (message.scope === "all") {
+                const epoch = await clearAllPipelinePools();
+                pipelineRefreshInFlight.clear();
+                logInfo("pipeline:cache", "cleared all pipeline pools", { epoch });
+                return {
+                    ok: true,
+                    type: MESSAGE_TYPE.PIPELINE_CACHE_CLEARED,
+                    scope: "all",
+                };
+            }
+
+            await clearPipelinePool(message.domain);
+            pipelineRefreshInFlight.delete(message.domain);
+            logInfo("pipeline:cache", "cleared pipeline pool for domain", {
+                domain: message.domain,
+            });
+            return {
+                ok: true,
+                type: MESSAGE_TYPE.PIPELINE_CACHE_CLEARED,
+                scope: "domain",
+                domain: message.domain,
             };
         }
 

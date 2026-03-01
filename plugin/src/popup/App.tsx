@@ -47,6 +47,9 @@ export const App = () => {
   const [submitting, setSubmitting] = useState(false);
   const [latestResult, setLatestResult] = useState<PipelineResult | null>(null);
   const [pendingRefreshDomain, setPendingRefreshDomain] = useState<string | null>(null);
+  const [activeHostname, setActiveHostname] = useState<string | undefined>(undefined);
+  const [hasActiveHostnameCache, setHasActiveHostnameCache] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
   const latestResultRef = useRef<PipelineResult | null>(null);
   const [onboardingPrefill, setOnboardingPrefill] = useState<{
     mistral: string;
@@ -60,9 +63,23 @@ export const App = () => {
 
   const showErrorToast = useCallback((message: string) => {
     toast({
-      title: "Error",
       description: message
     });
+  }, []);
+
+  const syncActiveTabCacheStatus = useCallback(async () => {
+    const response = await sendRuntimeMessage({
+      type: MESSAGE_TYPE.GET_ACTIVE_TAB_CACHE_STATUS
+    });
+
+    if (!response.ok || response.type !== MESSAGE_TYPE.ACTIVE_TAB_CACHE_STATUS) {
+      setActiveHostname(undefined);
+      setHasActiveHostnameCache(false);
+      return;
+    }
+
+    setActiveHostname(response.hostname);
+    setHasActiveHostnameCache(response.hasCache);
   }, []);
 
   useEffect(() => {
@@ -84,18 +101,30 @@ export const App = () => {
         customDraftPrompt: response.state.customDraftPrompt ?? ""
       }));
       setScreen(resolveInitialScreen(response.state));
+      await syncActiveTabCacheStatus();
     })();
-  }, [showErrorToast]);
+  }, [showErrorToast, syncActiveTabCacheStatus]);
 
   useEffect(() => {
-    if (!pendingRefreshDomain) {
-      return;
-    }
+    let handledRefresh = false;
 
-    let handled = false;
+    const onStorageChanged: Parameters<typeof chrome.storage.onChanged.addListener>[0] = (
+      changes,
+      areaName
+    ) => {
+      if (areaName !== "local") {
+        return;
+      }
 
-    const applyPoolUpdate = (pools: Record<string, CachedDomainPipelinePool> | undefined) => {
-      if (handled) {
+      const poolsChange = changes[PIPELINE_POOLS_STORAGE_KEY];
+
+      if (!poolsChange) {
+        return;
+      }
+
+      void syncActiveTabCacheStatus();
+
+      if (!pendingRefreshDomain || handledRefresh) {
         return;
       }
 
@@ -105,7 +134,8 @@ export const App = () => {
         return;
       }
 
-      const domainPool = pools?.[pendingRefreshDomain];
+      const nextPools = poolsChange.newValue as Record<string, CachedDomainPipelinePool> | undefined;
+      const domainPool = nextPools?.[pendingRefreshDomain];
 
       if (!domainPool) {
         return;
@@ -125,29 +155,13 @@ export const App = () => {
         });
       }
 
-      handled = true;
+      handledRefresh = true;
       setPendingRefreshDomain(null);
       toast({
-        title: "Background refresh finished",
-        description: `Added ${addedCount} new candidate${addedCount === 1 ? "" : "s"}.`
+        description: `Background refresh finished. Added ${addedCount} new candidate${
+          addedCount === 1 ? "" : "s"
+        }.`
       });
-    };
-
-    const onStorageChanged: Parameters<typeof chrome.storage.onChanged.addListener>[0] = (
-      changes,
-      areaName
-    ) => {
-      if (areaName !== "local") {
-        return;
-      }
-
-      const poolsChange = changes[PIPELINE_POOLS_STORAGE_KEY];
-
-      if (!poolsChange) {
-        return;
-      }
-
-      applyPoolUpdate(poolsChange.newValue as Record<string, CachedDomainPipelinePool> | undefined);
     };
 
     chrome.storage.onChanged.addListener(onStorageChanged);
@@ -155,7 +169,7 @@ export const App = () => {
     return () => {
       chrome.storage.onChanged.removeListener(onStorageChanged);
     };
-  }, [pendingRefreshDomain]);
+  }, [pendingRefreshDomain, syncActiveTabCacheStatus]);
 
   const updateAuthState = (next: OnboardingState) => {
     setState(next);
@@ -272,6 +286,7 @@ export const App = () => {
         response.result.backgroundRefreshStarted ? response.result.domain : null
       );
       setScreen("results");
+      await syncActiveTabCacheStatus();
     } catch (pipelineError) {
       showErrorToast(
         pipelineError instanceof Error
@@ -310,10 +325,58 @@ export const App = () => {
     }
   };
 
-  const restartOnboarding = () => {
+  const clearActiveHostnameCache = async () => {
+    if (!activeHostname) {
+      return;
+    }
+
+    setClearingCache(true);
+
+    try {
+      const response = await sendRuntimeMessage({
+        type: MESSAGE_TYPE.CLEAR_PIPELINE_CACHE,
+        scope: "domain",
+        domain: activeHostname
+      });
+
+      if (!response.ok || response.type !== MESSAGE_TYPE.PIPELINE_CACHE_CLEARED) {
+        throw new Error(response.ok ? "Failed to clear cache." : response.error);
+      }
+
+      await syncActiveTabCacheStatus();
+    } catch (clearError) {
+      showErrorToast(clearError instanceof Error ? clearError.message : "Failed to clear cache.");
+    } finally {
+      setClearingCache(false);
+    }
+  };
+
+  const restartOnboarding = async () => {
+    let clearAllError: string | undefined;
+
+    try {
+      const response = await sendRuntimeMessage({
+        type: MESSAGE_TYPE.CLEAR_PIPELINE_CACHE,
+        scope: "all"
+      });
+
+      if (!response.ok || response.type !== MESSAGE_TYPE.PIPELINE_CACHE_CLEARED) {
+        throw new Error(response.ok ? "Failed to clear cache." : response.error);
+      }
+    } catch (clearError) {
+      clearAllError = clearError instanceof Error ? clearError.message : "Failed to clear cache.";
+    }
+
     setActiveStep("google");
     setPendingRefreshDomain(null);
+    setLatestResult(null);
+    setActiveHostname(undefined);
+    setHasActiveHostnameCache(false);
     setScreen("onboarding");
+
+    if (clearAllError) {
+      showErrorToast(clearAllError);
+    }
   };
 
   return (
@@ -342,6 +405,9 @@ export const App = () => {
             running={screen === "running"}
             onRun={() => runPipeline("cache_then_refresh")}
             onRestartOnboarding={restartOnboarding}
+            showClearCache={hasActiveHostnameCache && Boolean(activeHostname)}
+            clearingCache={clearingCache}
+            onClearCache={clearActiveHostnameCache}
           />
         ) : null}
 

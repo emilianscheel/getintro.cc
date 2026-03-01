@@ -11,7 +11,8 @@ import { isMistralAvailable } from "../integrations/mistral-config";
 const STORAGE_KEYS = {
   ONBOARDING_STATE: "onboarding-state",
   SECRETS: "secrets",
-  PIPELINE_POOLS: "pipeline-pools"
+  PIPELINE_POOLS: "pipeline-pools",
+  PIPELINE_CACHE_EPOCH: "pipeline-cache-epoch"
 } as const;
 
 export const PIPELINE_POOLS_STORAGE_KEY = STORAGE_KEYS.PIPELINE_POOLS;
@@ -105,6 +106,14 @@ export const clearSecretEnvelope = async (provider: ApiProvider): Promise<void> 
 
 type StoredPipelinePools = Record<string, CachedDomainPipelinePool>;
 
+const normalizePipelineCacheEpoch = (value: unknown): number => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+
+  return Math.floor(value);
+};
+
 export const getPipelinePools = async (): Promise<StoredPipelinePools> => {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.PIPELINE_POOLS);
   return (stored[STORAGE_KEYS.PIPELINE_POOLS] as StoredPipelinePools | undefined) ?? {};
@@ -126,4 +135,28 @@ export const setPipelinePool = async (
   await chrome.storage.local.set({
     [STORAGE_KEYS.PIPELINE_POOLS]: pools
   });
+};
+
+export const getPipelineCacheEpoch = async (): Promise<number> => {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.PIPELINE_CACHE_EPOCH);
+  return normalizePipelineCacheEpoch(stored[STORAGE_KEYS.PIPELINE_CACHE_EPOCH]);
+};
+
+const writePipelinePoolsWithEpochBump = async (pools: StoredPipelinePools): Promise<number> => {
+  const nextEpoch = (await getPipelineCacheEpoch()) + 1;
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.PIPELINE_POOLS]: pools,
+    [STORAGE_KEYS.PIPELINE_CACHE_EPOCH]: nextEpoch
+  });
+  return nextEpoch;
+};
+
+export const clearPipelinePool = async (domain: string): Promise<number> => {
+  const pools = await getPipelinePools();
+  delete pools[domain];
+  return writePipelinePoolsWithEpochBump(pools);
+};
+
+export const clearAllPipelinePools = async (): Promise<number> => {
+  return writePipelinePoolsWithEpochBump({});
 };

@@ -19,4 +19,31 @@ describe("isRuntimeRequest", () => {
       })
     ).toBe(true);
   });
+
+  it("accepts GET_ACTIVE_TAB_CACHE_STATUS requests", () => {
+    expect(
+      isRuntimeRequest({
+        type: MESSAGE_TYPE.GET_ACTIVE_TAB_CACHE_STATUS
+      })
+    ).toBe(true);
+  });
+
+  it("accepts CLEAR_PIPELINE_CACHE all scope requests", () => {
+    expect(
+      isRuntimeRequest({
+        type: MESSAGE_TYPE.CLEAR_PIPELINE_CACHE,
+        scope: "all"
+      })
+    ).toBe(true);
+  });
+
+  it("accepts CLEAR_PIPELINE_CACHE domain scope requests", () => {
+    expect(
+      isRuntimeRequest({
+        type: MESSAGE_TYPE.CLEAR_PIPELINE_CACHE,
+        scope: "domain",
+        domain: "example.com"
+      })
+    ).toBe(true);
+  });
 });
