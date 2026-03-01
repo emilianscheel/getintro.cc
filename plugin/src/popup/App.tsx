@@ -3,6 +3,8 @@ import type {
   CachedDomainPipelinePool,
   OnboardingState,
   OnboardingStep,
+  OutreachRecord,
+  OutreachStatus,
   PipelineResult,
   PipelineRunMode
 } from "../lib/types";
@@ -17,9 +19,16 @@ import { OnboardingView } from "./views/onboarding-view";
 import { RunView } from "./views/run-view";
 import { ResultFormView } from "./views/result-form-view";
 import { EmailSentView } from "./views/email-sent-view";
+import { PastOutreachesView } from "./views/past-outreaches-view";
 import { appendUnseenCandidates } from "./pipelineResults";
 
-type Screen = "onboarding" | "run" | "running" | "results" | "email_sent";
+type Screen =
+  | "onboarding"
+  | "run"
+  | "running"
+  | "results"
+  | "email_sent"
+  | "past_outreaches";
 
 const initialState: OnboardingState = {
   started: false,
@@ -47,7 +56,11 @@ export const App = () => {
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [latestResult, setLatestResult] = useState<PipelineResult | null>(null);
-  const [sentGmailUrl, setSentGmailUrl] = useState<string | null>(null);
+  const [outboundGmailUrl, setOutboundGmailUrl] = useState<string | null>(null);
+  const [outboundStatus, setOutboundStatus] = useState<OutreachStatus | null>(null);
+  const [outreachHistory, setOutreachHistory] = useState<OutreachRecord[]>([]);
+  const [outreachHistoryLoading, setOutreachHistoryLoading] = useState(false);
+  const [outreachHistoryQuery, setOutreachHistoryQuery] = useState("");
   const [pendingRefreshDomain, setPendingRefreshDomain] = useState<string | null>(null);
   const [activeHostname, setActiveHostname] = useState<string | undefined>(undefined);
   const [hasActiveHostnameCache, setHasActiveHostnameCache] = useState(false);
@@ -180,7 +193,13 @@ export const App = () => {
       customDraftPrompt: next.customDraftPrompt ?? current.customDraftPrompt
     }));
 
-    if (!next.completed && (screen === "run" || screen === "results" || screen === "email_sent")) {
+    if (
+      !next.completed &&
+      (screen === "run" ||
+        screen === "results" ||
+        screen === "email_sent" ||
+        screen === "past_outreaches")
+    ) {
       setScreen("onboarding");
     }
   };
@@ -271,7 +290,8 @@ export const App = () => {
   const runPipeline = async (mode: PipelineRunMode) => {
     setBusy(true);
     setScreen("running");
-    setSentGmailUrl(null);
+    setOutboundGmailUrl(null);
+    setOutboundStatus(null);
     setPendingRefreshDomain(null);
 
     try {
@@ -307,6 +327,7 @@ export const App = () => {
     toEmail: string;
     subject: string;
     message: string;
+    hostname?: string;
   }) => {
     setSubmitting(true);
 
@@ -320,7 +341,8 @@ export const App = () => {
         throw new Error(response.ok ? "Failed to send email." : response.error);
       }
 
-      setSentGmailUrl(response.gmailUrl);
+      setOutboundGmailUrl(response.gmailUrl);
+      setOutboundStatus("sent");
       setScreen("email_sent");
     } catch (submitError) {
       showErrorToast(
@@ -329,6 +351,67 @@ export const App = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const saveEmailDraft = async (payload: {
+    fromEmail: string;
+    toEmail: string;
+    subject: string;
+    message: string;
+    hostname?: string;
+  }) => {
+    setSubmitting(true);
+
+    try {
+      const response = await sendRuntimeMessage({
+        type: MESSAGE_TYPE.SAVE_EMAIL_DRAFT,
+        payload
+      });
+
+      if (!response.ok || response.type !== MESSAGE_TYPE.EMAIL_DRAFT_SAVED) {
+        throw new Error(response.ok ? "Failed to save draft." : response.error);
+      }
+
+      setOutboundGmailUrl(response.gmailUrl);
+      setOutboundStatus("draft");
+      setScreen("email_sent");
+    } catch (submitError) {
+      showErrorToast(
+        submitError instanceof Error ? submitError.message : "Failed to save draft."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const loadOutreachHistory = useCallback(async () => {
+    setOutreachHistoryLoading(true);
+
+    try {
+      const response = await sendRuntimeMessage({
+        type: MESSAGE_TYPE.GET_PAST_OUTREACHES
+      });
+
+      if (!response.ok || response.type !== MESSAGE_TYPE.PAST_OUTREACHES) {
+        throw new Error(response.ok ? "Failed to load past outreaches." : response.error);
+      }
+
+      setOutreachHistory(response.items);
+    } catch (historyError) {
+      showErrorToast(
+        historyError instanceof Error
+          ? historyError.message
+          : "Failed to load past outreaches."
+      );
+    } finally {
+      setOutreachHistoryLoading(false);
+    }
+  }, [showErrorToast]);
+
+  const openPastOutreaches = async () => {
+    setOutreachHistoryQuery("");
+    setScreen("past_outreaches");
+    await loadOutreachHistory();
   };
 
   const clearActiveHostnameCache = async () => {
@@ -376,7 +459,8 @@ export const App = () => {
     setActiveStep("google");
     setPendingRefreshDomain(null);
     setLatestResult(null);
-    setSentGmailUrl(null);
+    setOutboundGmailUrl(null);
+    setOutboundStatus(null);
     setActiveHostname(undefined);
     setHasActiveHostnameCache(false);
     setScreen("onboarding");
@@ -415,6 +499,7 @@ export const App = () => {
             showClearCache={hasActiveHostnameCache && Boolean(activeHostname)}
             clearingCache={clearingCache}
             onClearCache={clearActiveHostnameCache}
+            onOpenPastOutreaches={openPastOutreaches}
           />
         ) : null}
 
@@ -424,11 +509,25 @@ export const App = () => {
             result={latestResult}
             submitting={submitting}
             onSubmit={submitEmail}
+            onSaveDraft={saveEmailDraft}
             onRunAgain={() => runPipeline("fresh_only")}
           />
         ) : null}
 
-        {screen === "email_sent" && sentGmailUrl ? <EmailSentView gmailUrl={sentGmailUrl} /> : null}
+        {screen === "email_sent" && outboundGmailUrl && outboundStatus ? (
+          <EmailSentView gmailUrl={outboundGmailUrl} status={outboundStatus} />
+        ) : null}
+
+        {screen === "past_outreaches" ? (
+          <PastOutreachesView
+            items={outreachHistory}
+            loading={outreachHistoryLoading}
+            searchQuery={outreachHistoryQuery}
+            onSearchQueryChange={setOutreachHistoryQuery}
+            onBack={() => setScreen("run")}
+            onRefresh={loadOutreachHistory}
+          />
+        ) : null}
 
         <Toaster />
       </div>

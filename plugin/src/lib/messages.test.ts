@@ -46,4 +46,27 @@ describe("isRuntimeRequest", () => {
       })
     ).toBe(true);
   });
+
+  it("accepts SAVE_EMAIL_DRAFT requests", () => {
+    expect(
+      isRuntimeRequest({
+        type: MESSAGE_TYPE.SAVE_EMAIL_DRAFT,
+        payload: {
+          fromEmail: "sender@example.com",
+          toEmail: "recipient@example.com",
+          subject: "Hi",
+          message: "Hello",
+          hostname: "example.com"
+        }
+      })
+    ).toBe(true);
+  });
+
+  it("accepts GET_PAST_OUTREACHES requests", () => {
+    expect(
+      isRuntimeRequest({
+        type: MESSAGE_TYPE.GET_PAST_OUTREACHES
+      })
+    ).toBe(true);
+  });
 });

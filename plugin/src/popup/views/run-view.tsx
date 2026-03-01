@@ -8,6 +8,7 @@ type RunViewProps = {
     showClearCache: boolean;
     clearingCache: boolean;
     onClearCache: () => Promise<void>;
+    onOpenPastOutreaches: () => Promise<void>;
 };
 
 export const RunView = ({
@@ -17,6 +18,7 @@ export const RunView = ({
     showClearCache,
     clearingCache,
     onClearCache,
+    onOpenPastOutreaches,
 }: RunViewProps) => {
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-4 py-2">
@@ -42,24 +44,33 @@ export const RunView = ({
             ) : null}
 
             {!running ? (
-                <div className="mx-auto flex items-center gap-4">
+                <div className="mx-auto flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-4">
+                        <button
+                            type="button"
+                            className="block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white"
+                            onClick={() => void onRestartOnboarding()}
+                        >
+                            Restart setup
+                        </button>
+                        {showClearCache ? (
+                            <button
+                                type="button"
+                                disabled={clearingCache}
+                                className="block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => void onClearCache()}
+                            >
+                                Clear cache
+                            </button>
+                        ) : null}
+                    </div>
                     <button
                         type="button"
                         className="block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white"
-                        onClick={() => void onRestartOnboarding()}
+                        onClick={() => void onOpenPastOutreaches()}
                     >
-                        Restart setup
+                        past outreaches
                     </button>
-                    {showClearCache ? (
-                        <button
-                            type="button"
-                            disabled={clearingCache}
-                            className="block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                            onClick={() => void onClearCache()}
-                        >
-                            Clear cache
-                        </button>
-                    ) : null}
                 </div>
             ) : null}
         </div>

@@ -1,6 +1,7 @@
 import type {
   ApiProvider,
   DraftAndSendRequest,
+  OutreachRecord,
   PipelineRunMode,
   OnboardingState,
   PipelineResult
@@ -17,12 +18,16 @@ export const MESSAGE_TYPE = {
   CLEAR_PIPELINE_CACHE: "CLEAR_PIPELINE_CACHE",
   START_PIPELINE: "START_PIPELINE",
   SUBMIT_EMAIL: "SUBMIT_EMAIL",
+  SAVE_EMAIL_DRAFT: "SAVE_EMAIL_DRAFT",
+  GET_PAST_OUTREACHES: "GET_PAST_OUTREACHES",
   AUTH_STATUS_CHANGED: "AUTH_STATUS_CHANGED",
   PIPELINE_RESULT: "PIPELINE_RESULT",
   ACTIVE_TAB_CACHE_STATUS: "ACTIVE_TAB_CACHE_STATUS",
   PIPELINE_CACHE_CLEARED: "PIPELINE_CACHE_CLEARED",
   PIPELINE_ERROR: "PIPELINE_ERROR",
-  EMAIL_SENT: "EMAIL_SENT"
+  EMAIL_SENT: "EMAIL_SENT",
+  EMAIL_DRAFT_SAVED: "EMAIL_DRAFT_SAVED",
+  PAST_OUTREACHES: "PAST_OUTREACHES"
 } as const;
 
 const REQUEST_MESSAGE_TYPES = [
@@ -35,7 +40,9 @@ const REQUEST_MESSAGE_TYPES = [
   MESSAGE_TYPE.SAVE_CUSTOM_DRAFT_PROMPT,
   MESSAGE_TYPE.CLEAR_PIPELINE_CACHE,
   MESSAGE_TYPE.START_PIPELINE,
-  MESSAGE_TYPE.SUBMIT_EMAIL
+  MESSAGE_TYPE.SUBMIT_EMAIL,
+  MESSAGE_TYPE.SAVE_EMAIL_DRAFT,
+  MESSAGE_TYPE.GET_PAST_OUTREACHES
 ] as const;
 
 export type RuntimeRequest =
@@ -70,6 +77,13 @@ export type RuntimeRequest =
   | {
       type: typeof MESSAGE_TYPE.SUBMIT_EMAIL;
       payload: DraftAndSendRequest;
+    }
+  | {
+      type: typeof MESSAGE_TYPE.SAVE_EMAIL_DRAFT;
+      payload: DraftAndSendRequest;
+    }
+  | {
+      type: typeof MESSAGE_TYPE.GET_PAST_OUTREACHES;
     };
 
 export type RuntimeResponse =
@@ -106,6 +120,18 @@ export type RuntimeResponse =
       draftId: string;
       messageId: string;
       gmailUrl: string;
+    }
+  | {
+      ok: true;
+      type: typeof MESSAGE_TYPE.EMAIL_DRAFT_SAVED;
+      draftId: string;
+      messageId: string;
+      gmailUrl: string;
+    }
+  | {
+      ok: true;
+      type: typeof MESSAGE_TYPE.PAST_OUTREACHES;
+      items: OutreachRecord[];
     }
   | {
       ok: false;

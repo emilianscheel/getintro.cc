@@ -3,16 +3,19 @@ import type {
   CachedDomainPipelinePool,
   EncryptedSecretEnvelope,
   OnboardingState,
+  OutreachRecord,
   StoredSecrets
 } from "../types";
 import { ROCKETREACH_KEY_REQUIRED_FOR_ONBOARDING } from "../integrations/email-enrichment/config";
 import { isMistralAvailable } from "../integrations/mistral-config";
+import { decryptSecret, encryptSecret } from "../security/crypto";
 
 const STORAGE_KEYS = {
   ONBOARDING_STATE: "onboarding-state",
   SECRETS: "secrets",
   PIPELINE_POOLS: "pipeline-pools",
-  PIPELINE_CACHE_EPOCH: "pipeline-cache-epoch"
+  PIPELINE_CACHE_EPOCH: "pipeline-cache-epoch",
+  OUTREACH_HISTORY: "outreach-history"
 } as const;
 
 export const PIPELINE_POOLS_STORAGE_KEY = STORAGE_KEYS.PIPELINE_POOLS;
@@ -159,4 +162,80 @@ export const clearPipelinePool = async (domain: string): Promise<number> => {
 
 export const clearAllPipelinePools = async (): Promise<number> => {
   return writePipelinePoolsWithEpochBump({});
+};
+
+const isOutreachRecord = (value: unknown): value is OutreachRecord => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<OutreachRecord>;
+
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.createdAtMs === "number" &&
+    (candidate.status === "sent" || candidate.status === "draft") &&
+    typeof candidate.hostname === "string" &&
+    typeof candidate.recipientEmail === "string" &&
+    typeof candidate.senderEmail === "string" &&
+    typeof candidate.subject === "string" &&
+    typeof candidate.body === "string" &&
+    typeof candidate.gmailUrl === "string"
+  );
+};
+
+const getEncryptedOutreachHistory = async (): Promise<EncryptedSecretEnvelope[]> => {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.OUTREACH_HISTORY);
+  const raw = stored[STORAGE_KEYS.OUTREACH_HISTORY];
+
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.filter(
+    (item): item is EncryptedSecretEnvelope =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      (item as EncryptedSecretEnvelope).version === 1 &&
+      typeof (item as EncryptedSecretEnvelope).ciphertextB64 === "string" &&
+      typeof (item as EncryptedSecretEnvelope).ivB64 === "string"
+  );
+};
+
+const setEncryptedOutreachHistory = async (
+  envelopes: EncryptedSecretEnvelope[]
+): Promise<void> => {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.OUTREACH_HISTORY]: envelopes
+  });
+};
+
+export const appendOutreachRecord = async (record: OutreachRecord): Promise<void> => {
+  const encrypted = await encryptSecret(JSON.stringify(record));
+  const current = await getEncryptedOutreachHistory();
+  current.push(encrypted);
+  await setEncryptedOutreachHistory(current);
+};
+
+export const getOutreachHistory = async (): Promise<OutreachRecord[]> => {
+  const envelopes = await getEncryptedOutreachHistory();
+  const records: OutreachRecord[] = [];
+
+  for (const envelope of envelopes) {
+    try {
+      const decrypted = await decryptSecret(envelope);
+      const parsed = JSON.parse(decrypted) as unknown;
+
+      if (!isOutreachRecord(parsed)) {
+        console.error("[getintro.cc][storage] invalid outreach record payload");
+        continue;
+      }
+
+      records.push(parsed);
+    } catch (error) {
+      console.error("[getintro.cc][storage] failed to decrypt outreach record", error);
+    }
+  }
+
+  return records.sort((a, b) => b.createdAtMs - a.createdAtMs);
 };

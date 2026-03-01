@@ -1,6 +1,8 @@
 import type {
     CachedDomainPipelinePool,
     Candidate,
+    DraftAndSendRequest,
+    OutreachRecord,
     PipelineResult,
     PipelineRunMode,
 } from "../src/lib/types";
@@ -12,9 +14,11 @@ import {
 } from "../src/lib/messages";
 import {
     clearAllPipelinePools,
+    appendOutreachRecord,
     clearPipelinePool,
     getPipelineCacheEpoch,
     getOnboardingState,
+    getOutreachHistory,
     getPipelinePool,
     patchOnboardingState,
     setPipelinePool,
@@ -36,7 +40,7 @@ import {
 import { inferNameFromEmailAddress } from "../src/lib/extract/inferNameFromEmail";
 import { buildRegexEmailDisplayContexts } from "../src/lib/extract/regexEmailContext";
 import { enrichCandidatesWithEmailProviders } from "../src/lib/integrations/email-enrichment";
-import { createDraftAndSend } from "../src/lib/integrations/gmail";
+import { createDraftAndSend, createDraftOnly } from "../src/lib/integrations/gmail";
 import { elapsedMs, logError, logInfo, previewText } from "../src/lib/logging";
 import { defineBackground } from "wxt/utils/define-background";
 
@@ -84,6 +88,7 @@ const summarizeRuntimeRequest = (message: RuntimeRequest): Record<string, unknow
                 mode: message.mode ?? "cache_then_refresh",
             };
         case MESSAGE_TYPE.SUBMIT_EMAIL:
+        case MESSAGE_TYPE.SAVE_EMAIL_DRAFT:
             return {
                 type: message.type,
                 payload: {
@@ -92,6 +97,7 @@ const summarizeRuntimeRequest = (message: RuntimeRequest): Record<string, unknow
                     subject: message.payload.subject,
                     messageLength: message.payload.message.length,
                     messagePreview: previewText(message.payload.message, 200),
+                    hostname: message.payload.hostname,
                 },
             };
         default:
@@ -146,6 +152,14 @@ const summarizeRuntimeResponse = (response: RuntimeResponse): Record<string, unk
             type: response.type,
             scope: response.scope,
             domain: response.domain,
+        };
+    }
+
+    if (response.type === MESSAGE_TYPE.PAST_OUTREACHES) {
+        return {
+            ok: true,
+            type: response.type,
+            items: response.items.length,
         };
     }
 
@@ -286,6 +300,58 @@ const getActiveTabCacheStatus = async (): Promise<{
         hostname,
         hasCache: Boolean(pool),
     };
+};
+
+const resolveOutboundHostname = async (preferredHostname?: string): Promise<string> => {
+    const trimmed = preferredHostname?.trim().toLowerCase();
+
+    if (trimmed) {
+        return trimmed;
+    }
+
+    try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const hostname = getHttpHostnameFromUrl(tabs[0]?.url);
+
+        if (hostname) {
+            return hostname;
+        }
+    } catch (error) {
+        logError("gmail", "failed to resolve active tab hostname for outreach history", error);
+    }
+
+    return "unknown";
+};
+
+const buildOutreachRecord = (
+    payload: DraftAndSendRequest,
+    mode: "sent" | "draft",
+    hostname: string,
+    gmailUrl: string,
+): OutreachRecord => {
+    return {
+        id: crypto.randomUUID(),
+        createdAtMs: Date.now(),
+        status: mode,
+        hostname,
+        recipientEmail: payload.toEmail,
+        senderEmail: payload.fromEmail,
+        subject: payload.subject,
+        body: payload.message,
+        gmailUrl,
+    };
+};
+
+const submitOutboundEmail = async (
+    payload: DraftAndSendRequest,
+    mode: "sent" | "draft",
+): Promise<{ draftId: string; messageId: string; gmailUrl: string }> => {
+    const result =
+        mode === "sent" ? await createDraftAndSend(payload) : await createDraftOnly(payload);
+    const hostname = await resolveOutboundHostname(payload.hostname);
+    const outreach = buildOutreachRecord(payload, mode, hostname, result.gmailUrl);
+    await appendOutreachRecord(outreach);
+    return result;
 };
 
 const poolToPipelineResult = (
@@ -820,6 +886,15 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
             return startPipeline(countdownSeconds, mode);
         }
 
+        case MESSAGE_TYPE.GET_PAST_OUTREACHES: {
+            const items = await getOutreachHistory();
+            return {
+                ok: true,
+                type: MESSAGE_TYPE.PAST_OUTREACHES,
+                items,
+            };
+        }
+
         case MESSAGE_TYPE.SUBMIT_EMAIL: {
             if (DISABLE_GMAIL_SEND_FOR_TESTING) {
                 logInfo("gmail", "submit email skipped because testing mode is enabled");
@@ -835,7 +910,7 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
                 messageLength: message.payload.message.length,
                 messagePreview: previewText(message.payload.message, 200),
             });
-            const sent = await createDraftAndSend(message.payload);
+            const sent = await submitOutboundEmail(message.payload, "sent");
             logInfo("gmail", "gmail send completed", sent);
 
             return {
@@ -844,6 +919,33 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
                 draftId: sent.draftId,
                 messageId: sent.messageId,
                 gmailUrl: sent.gmailUrl,
+            };
+        }
+
+        case MESSAGE_TYPE.SAVE_EMAIL_DRAFT: {
+            if (DISABLE_GMAIL_SEND_FOR_TESTING) {
+                logInfo("gmail", "save draft skipped because testing mode is enabled");
+                return errorResponse(
+                    "Gmail sending is disabled for testing. Google login is still enabled.",
+                );
+            }
+
+            logInfo("gmail", "saving outbound email as draft", {
+                fromEmail: message.payload.fromEmail,
+                toEmail: message.payload.toEmail,
+                subject: message.payload.subject,
+                messageLength: message.payload.message.length,
+                messagePreview: previewText(message.payload.message, 200),
+            });
+            const draft = await submitOutboundEmail(message.payload, "draft");
+            logInfo("gmail", "gmail draft saved", draft);
+
+            return {
+                ok: true,
+                type: MESSAGE_TYPE.EMAIL_DRAFT_SAVED,
+                draftId: draft.draftId,
+                messageId: draft.messageId,
+                gmailUrl: draft.gmailUrl,
             };
         }
 

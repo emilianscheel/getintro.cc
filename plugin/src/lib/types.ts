@@ -61,6 +61,21 @@ export type DraftAndSendRequest = {
   toEmail: string;
   subject: string;
   message: string;
+  hostname?: string;
+};
+
+export type OutreachStatus = "sent" | "draft";
+
+export type OutreachRecord = {
+  id: string;
+  createdAtMs: number;
+  status: OutreachStatus;
+  hostname: string;
+  recipientEmail: string;
+  senderEmail: string;
+  subject: string;
+  body: string;
+  gmailUrl: string;
 };
 
 export type RegexEmailDisplayContext = {

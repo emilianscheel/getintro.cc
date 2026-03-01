@@ -11,6 +11,7 @@ type ResultFormViewProps = {
     result: PipelineResult;
     submitting: boolean;
     onSubmit: (payload: DraftAndSendRequest) => Promise<void>;
+    onSaveDraft: (payload: DraftAndSendRequest) => Promise<void>;
     onRunAgain: () => Promise<void>;
 };
 
@@ -66,6 +67,7 @@ export const ResultFormView = ({
     result,
     submitting,
     onSubmit,
+    onSaveDraft,
     onRunAgain,
 }: ResultFormViewProps) => {
     const firstCandidate = result.candidates[0];
@@ -389,6 +391,7 @@ export const ResultFormView = ({
                                 toEmail: selectedRecipientEmails.join(", "),
                                 subject,
                                 message,
+                                hostname: result.domain,
                             });
                         }}
                     >
@@ -396,13 +399,35 @@ export const ResultFormView = ({
                     </Button>
                 </div>
 
-                <button
-                    type="button"
-                    className="mx-auto block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white"
-                    onClick={() => void onRunAgain()}
-                >
-                    Run again
-                </button>
+                <div className="mx-auto flex items-center gap-4">
+                    <button
+                        type="button"
+                        className="block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white"
+                        onClick={() => void onRunAgain()}
+                    >
+                        Run again
+                    </button>
+                    <button
+                        type="button"
+                        disabled={!canSubmit || submitting}
+                        className="block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => {
+                            if (selectedRecipientEmails.length === 0) {
+                                return;
+                            }
+
+                            void onSaveDraft({
+                                fromEmail,
+                                toEmail: selectedRecipientEmails.join(", "),
+                                subject,
+                                message,
+                                hostname: result.domain,
+                            });
+                        }}
+                    >
+                        Save as draft
+                    </button>
+                </div>
 
                 {selectedRecipientEmails.length === 0 ? (
                     <p className="text-xs text-white/70">

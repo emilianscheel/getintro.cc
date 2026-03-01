@@ -3,6 +3,7 @@ import { getTokenForApi, removeCachedToken } from "../auth/google";
 import { elapsedMs, logError, logInfo, previewText } from "../logging";
 
 const GMAIL_SENT_URL = "https://mail.google.com/mail/u/0/#sent";
+const GMAIL_DRAFTS_URL = "https://mail.google.com/mail/u/0/#drafts";
 
 export const buildGmailMessageUrl = (sent: {
   id?: string;
@@ -12,6 +13,19 @@ export const buildGmailMessageUrl = (sent: {
 
   if (!token) {
     return GMAIL_SENT_URL;
+  }
+
+  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(token)}`;
+};
+
+export const buildGmailDraftUrl = (draft: {
+  id?: string;
+  threadId?: string;
+}): string => {
+  const token = draft.threadId?.trim() || draft.id?.trim();
+
+  if (!token) {
+    return GMAIL_DRAFTS_URL;
   }
 
   return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(token)}`;
@@ -109,7 +123,7 @@ export const createDraftAndSend = async (
   const raw = buildRawMessage(payload);
   logInfo("gmail", "encoded draft message", { rawLength: raw.length });
 
-  const draft = await gmailRequest<{ id: string }>(
+  const draft = await gmailRequest<{ id: string; message?: { id?: string; threadId?: string } }>(
     token,
     "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
     {
@@ -121,7 +135,11 @@ export const createDraftAndSend = async (
       })
     }
   );
-  logInfo("gmail", "draft created", { draftId: draft.id });
+  logInfo("gmail", "draft created", {
+    draftId: draft.id,
+    messageId: draft.message?.id,
+    threadId: draft.message?.threadId
+  });
 
   const sent = await gmailRequest<{ id?: string; threadId?: string }>(
     token,
@@ -139,6 +157,53 @@ export const createDraftAndSend = async (
     draftId: draft.id,
     messageId,
     threadId: sent.threadId,
+    gmailUrl
+  });
+
+  return {
+    draftId: draft.id,
+    messageId,
+    gmailUrl
+  };
+};
+
+export const createDraftOnly = async (
+  payload: DraftAndSendRequest
+): Promise<{ draftId: string; messageId: string; gmailUrl: string }> => {
+  logInfo("gmail", "createDraftOnly started", {
+    fromEmail: payload.fromEmail,
+    toEmail: payload.toEmail,
+    subject: payload.subject,
+    messageLength: payload.message.length,
+    messagePreview: previewText(payload.message, 200)
+  });
+  const token = await getTokenForApi();
+  const raw = buildRawMessage(payload);
+  logInfo("gmail", "encoded draft-only message", { rawLength: raw.length });
+
+  const draft = await gmailRequest<{ id: string; message?: { id?: string; threadId?: string } }>(
+    token,
+    "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message: {
+          raw
+        }
+      })
+    }
+  );
+
+  const messageId = draft.message?.id?.trim() || draft.message?.threadId?.trim() || "";
+  const gmailUrl = buildGmailDraftUrl({
+    id: draft.message?.id,
+    threadId: draft.message?.threadId
+  });
+
+  logInfo("gmail", "draft-only created", {
+    draftId: draft.id,
+    messageId,
+    threadId: draft.message?.threadId,
     gmailUrl
   });
 
