@@ -105,13 +105,16 @@ export const Newsletter = () => {
                             variants={landingItemVariants}
                             className="text-base short:lg:text-lg sm:text-lg lg:text-xl !leading-[1.3] font-medium text-center text-foreground text-pretty"
                         >
-                            Instantly connect with founders. One click in the browser toolbar
-                            finds their contact and drafts your outreach in Gmail. Powered by your
-                            Mistral AI and RocketReach API key.
+                            Instantly connect with founders. One click in the browser toolbar finds
+                            their contact and drafts your outreach in Gmail. Powered by your Mistral
+                            AI and RocketReach API key.
                         </motion.p>
                     </div>
 
-                    <motion.div variants={landingItemVariants} className="mt-6 flex flex-col items-center gap-4">
+                    <motion.div
+                        variants={landingItemVariants}
+                        className="mt-6 flex flex-col items-center gap-4"
+                    >
                         <Button className={cn("relative px-8 gap-2")} shine>
                             <ChromeIcon className="size-5" />
                             <span className="inline-block">Download Extension</span>
@@ -171,7 +174,7 @@ export const Newsletter = () => {
                             onClick={(e) => e.stopPropagation()}
                         >
                             <Image
-                                src="/demo.gif"
+                                src="https://github.com/emilianscheel/getintro.cc/blob/95cce7de466e2aff8bbf676a0e7948cecdf12108/demo.gif"
                                 alt="Demo video showing how getintro.cc works"
                                 width={1882}
                                 height={1242}
