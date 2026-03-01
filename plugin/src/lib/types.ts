@@ -34,6 +34,7 @@ export type Candidate = {
   score: number;
   role: string;
   email?: string;
+  draft?: string;
   source: "mistral" | "rocketreach" | "mock" | "regex";
 };
 
@@ -42,6 +43,7 @@ export type PipelineResult = {
   visitedUrls: string[];
   emailsRegex: string[];
   candidates: Candidate[];
+  multiRecipientDraft?: string;
   partial: boolean;
   stoppedAtMs: number;
 };

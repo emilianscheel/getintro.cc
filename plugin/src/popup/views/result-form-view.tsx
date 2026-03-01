@@ -16,12 +16,29 @@ type ResultFormViewProps = {
 
 const DEFAULT_MESSAGE = "hi, would you like to meet for a coffee? Daniel from Creandum";
 
-const formatCandidateLabel = (candidate: Candidate): string => {
-    if (!candidate.role.trim()) {
-        return candidate.name;
+const isUnknownRole = (role: string): boolean => role.trim().toLowerCase() === "unknown";
+
+const hasDisplayRole = (candidate: Candidate): boolean => {
+    const role = candidate.role.trim();
+    return role.length > 0 && !isUnknownRole(role);
+};
+
+const resolveDraftForSelection = (
+    selectedCandidates: Candidate[],
+    multiRecipientDraft?: string,
+): string => {
+    const normalizedMultiDraft = multiRecipientDraft?.trim() || "";
+
+    if (selectedCandidates.length > 1) {
+        return normalizedMultiDraft || DEFAULT_MESSAGE;
     }
 
-    return `${candidate.name} · ${candidate.role}`;
+    if (selectedCandidates.length === 1) {
+        const candidateDraft = selectedCandidates[0].draft?.trim() || "";
+        return candidateDraft || normalizedMultiDraft || DEFAULT_MESSAGE;
+    }
+
+    return normalizedMultiDraft || DEFAULT_MESSAGE;
 };
 
 export const ResultFormView = ({
@@ -31,16 +48,48 @@ export const ResultFormView = ({
     onSubmit,
     onRunAgain,
 }: ResultFormViewProps) => {
+    const firstCandidate = result.candidates[0];
     const [recipientOpen, setRecipientOpen] = useState(false);
     const [recipientQuery, setRecipientQuery] = useState("");
-    const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(
-        result.candidates[0] ?? null,
+    const [selectedCandidates, setSelectedCandidates] = useState<Candidate[]>(() => {
+        return firstCandidate ? [firstCandidate] : [];
+    });
+    const [message, setMessage] = useState(() =>
+        resolveDraftForSelection(firstCandidate ? [firstCandidate] : [], result.multiRecipientDraft),
     );
-    const [message, setMessage] = useState(DEFAULT_MESSAGE);
     const recipientContainerRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    const canSubmit = Boolean(selectedCandidate?.email) && message.trim().length > 0;
+    const selectedRecipientEmails = useMemo(() => {
+        const seen = new Set<string>();
+        const emails: string[] = [];
+
+        for (const candidate of selectedCandidates) {
+            const email = candidate.email?.trim();
+
+            if (!email) {
+                continue;
+            }
+
+            const normalized = email.toLowerCase();
+
+            if (seen.has(normalized)) {
+                continue;
+            }
+
+            seen.add(normalized);
+            emails.push(email);
+        }
+
+        return emails;
+    }, [selectedCandidates]);
+
+    const canSubmit = selectedRecipientEmails.length > 0 && message.trim().length > 0;
+
+    const selectedDraft = useMemo(
+        () => resolveDraftForSelection(selectedCandidates, result.multiRecipientDraft),
+        [selectedCandidates, result.multiRecipientDraft],
+    );
 
     useEffect(() => {
         if (!recipientOpen) {
@@ -55,6 +104,10 @@ export const ResultFormView = ({
             window.cancelAnimationFrame(frame);
         };
     }, [recipientOpen]);
+
+    useEffect(() => {
+        setMessage(selectedDraft);
+    }, [selectedDraft]);
 
     useEffect(() => {
         if (!recipientOpen) {
@@ -84,13 +137,20 @@ export const ResultFormView = ({
         };
     }, [recipientOpen]);
 
-    const selectedLabel = useMemo(() => {
-        if (!selectedCandidate) {
-            return "Select recipient";
+    const selectedEmailsLabel = useMemo(() => {
+        if (selectedRecipientEmails.length === 0) {
+            return "Select recipients";
         }
 
-        return formatCandidateLabel(selectedCandidate);
-    }, [selectedCandidate]);
+        if (selectedRecipientEmails.length <= 3) {
+            return selectedRecipientEmails.join(", ");
+        }
+
+        const shown = selectedRecipientEmails.slice(0, 3).join(", ");
+        const hiddenCount = selectedRecipientEmails.length - 3;
+
+        return `${shown} +${hiddenCount} more`;
+    }, [selectedRecipientEmails]);
 
     const filteredCandidates = useMemo(() => {
         const query = recipientQuery.trim().toLowerCase();
@@ -115,7 +175,7 @@ export const ResultFormView = ({
                         <div className="relative w-full" ref={recipientContainerRef}>
                             <button
                                 type="button"
-                                aria-label="Select recipient"
+                                aria-label="Select recipients"
                                 aria-expanded={recipientOpen}
                                 className="flex h-9 w-full items-center justify-between rounded-full border border-white/50 bg-white/20 px-4 py-2 text-left text-sm font-medium text-white backdrop-blur-sm shadow-button transition-colors-and-shadows duration-300 ease-out ring-1 ring-white/10 ring-offset-2 ring-offset-white/10 hover:border-white/15 hover:bg-white/30 hover:ring-white/15 hover:ring-offset-4 hover:ring-offset-black/20 hover:shadow-button-hover focus-visible:border-white/15 focus-visible:bg-white/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/70 focus-visible:ring-offset-4 focus-visible:ring-offset-black/20 focus-visible:shadow-button-hover"
                                 onClick={() => {
@@ -128,7 +188,14 @@ export const ResultFormView = ({
                                     });
                                 }}
                             >
-                                <span className="line-clamp-1">{selectedLabel}</span>
+                                <span
+                                    className={cn(
+                                        "line-clamp-1",
+                                        selectedRecipientEmails.length > 1 ? "text-[10px]" : "",
+                                    )}
+                                >
+                                    {selectedEmailsLabel}
+                                </span>
                                 <ChevronDown
                                     className={cn(
                                         "ml-2 h-4 w-4 shrink-0 text-white/70 transition-transform duration-200",
@@ -156,7 +223,7 @@ export const ResultFormView = ({
                                         ) : null}
 
                                         {filteredCandidates.map((candidate, index) => {
-                                            const isSelected = candidate === selectedCandidate;
+                                            const isSelected = selectedCandidates.includes(candidate);
 
                                             return (
                                                 <button
@@ -169,9 +236,16 @@ export const ResultFormView = ({
                                                             : "",
                                                     )}
                                                     onClick={() => {
-                                                        setSelectedCandidate(candidate);
-                                                        setRecipientOpen(false);
-                                                        setRecipientQuery("");
+                                                        setSelectedCandidates((current) => {
+                                                            if (current.includes(candidate)) {
+                                                                return current.filter(
+                                                                    (currentCandidate) =>
+                                                                        currentCandidate !== candidate,
+                                                                );
+                                                            }
+
+                                                            return [...current, candidate];
+                                                        });
                                                     }}
                                                 >
                                                     <div className="flex items-start justify-between gap-2">
@@ -180,9 +254,11 @@ export const ResultFormView = ({
                                                                 <span className="truncate text-sm font-medium text-zinc-900">
                                                                     {candidate.name}
                                                                 </span>
-                                                                <span className="truncate text-[10px] text-zinc-500">
-                                                                    {candidate.role}
-                                                                </span>
+                                                                {hasDisplayRole(candidate) ? (
+                                                                    <span className="truncate text-[10px] text-zinc-500">
+                                                                        {candidate.role.trim()}
+                                                                    </span>
+                                                                ) : null}
                                                             </p>
                                                             <p className="truncate text-xs text-zinc-500">
                                                                 {candidate.email ??
@@ -221,13 +297,13 @@ export const ResultFormView = ({
                         className="w-full"
                         disabled={!canSubmit || submitting}
                         onClick={() => {
-                            if (!selectedCandidate?.email) {
+                            if (selectedRecipientEmails.length === 0) {
                                 return;
                             }
 
                             void onSubmit({
                                 fromEmail,
-                                toEmail: selectedCandidate.email,
+                                toEmail: selectedRecipientEmails.join(", "),
                                 subject: `Intro from ${fromEmail}`,
                                 message,
                             });
@@ -245,9 +321,9 @@ export const ResultFormView = ({
                     Run again
                 </button>
 
-                {!selectedCandidate?.email ? (
+                {selectedRecipientEmails.length === 0 ? (
                     <p className="text-xs text-white/70">
-                        Selected candidate has no email. Choose one with an email address to submit.
+                        Select at least one candidate with an email address to submit.
                     </p>
                 ) : null}
             </div>
