@@ -72,6 +72,12 @@ body {
   will-change: opacity;
 }
 
+.dropdown-modal-overlay {
+  background: rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
 .glass-dropdown-panel {
   border: 1px solid rgba(255, 255, 255, 0.5);
   background: rgba(255, 255, 255, 0.12);

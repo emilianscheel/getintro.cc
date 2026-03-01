@@ -1,3 +1,5 @@
 # [`getintro.cc`](https://getintro.cc)
 
-![Demo](./demo.gif)
+![Hero](./hero.gif)
+
+![Demo](./demo.mp4)

@@ -25,16 +25,7 @@ const ChromeIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
-const DURATION = 0.3;
-const DELAY = DURATION;
-const EASE_OUT = "easeOut";
 const EASE_OUT_OPACITY = [0.25, 0.46, 0.45, 0.94] as const;
-const SPRING = {
-    type: "spring" as const,
-    stiffness: 60,
-    damping: 10,
-    mass: 0.8,
-};
 
 export const Newsletter = () => {
     const [showDemo, setShowDemo] = useState(false);
@@ -42,9 +33,8 @@ export const Newsletter = () => {
     const shouldReduceMotion = useReducedMotion();
 
     const landingContainerVariants = {
-        hidden: { opacity: shouldReduceMotion ? 1 : 0 },
+        hidden: {},
         visible: {
-            opacity: 1,
             transition: shouldReduceMotion
                 ? undefined
                 : {
@@ -93,11 +83,9 @@ export const Newsletter = () => {
                 className="flex overflow-hidden relative flex-col gap-4 justify-center items-center pt-10 w-full h-full short:lg:pt-10 pb-footer-safe-area 2xl:pt-footer-safe-area px-sides short:lg:gap-4 lg:gap-8"
             >
                 <motion.div
-                    layout="position"
                     variants={landingItemVariants}
-                    transition={{ duration: DURATION, ease: EASE_OUT }}
                     className={cn(
-                        "transition-all duration-300",
+                        "transition-[filter,opacity] duration-300",
                         (showDemo || showSetup) && "blur-md opacity-50",
                     )}
                 >
@@ -106,104 +94,57 @@ export const Newsletter = () => {
                     </h1>
                 </motion.div>
 
-                <motion.div
-                    variants={landingItemVariants}
+                <div
                     className={cn(
                         "flex flex-col items-center min-h-0 shrink transition-all duration-300",
                         (showDemo || showSetup) && "blur-md opacity-50",
                     )}
                 >
-                    <AnimatePresence mode="popLayout" propagate>
-                        <motion.div
-                            key="newsletter"
-                            initial={shouldReduceMotion ? false : "hidden"}
-                            animate="visible"
-                            exit="exit"
-                            variants={{
-                                visible: {
-                                    opacity: 1,
-                                    y: 0,
-                                    scale: 1,
-                                    transition: {
-                                        delay: DELAY,
-                                        duration: DURATION,
-                                        ease: EASE_OUT,
-                                    },
-                                },
-                                hidden: {
-                                    opacity: shouldReduceMotion ? 1 : 0,
-                                    y: shouldReduceMotion ? 0 : 20,
-                                    scale: 0.9,
-                                    transition: { duration: DURATION, ease: EASE_OUT },
-                                },
-                                exit: {
-                                    y: -150,
-                                    scale: 0.9,
-                                    transition: { duration: DURATION, ease: EASE_OUT },
-                                },
-                            }}
-                        >
-                            <div className="flex flex-col gap-4 w-full max-w-xl md:gap-6 lg:gap-8">
-                                <motion.p
-                                    initial={shouldReduceMotion ? false : "hidden"}
-                                    animate="visible"
-                                    variants={landingItemVariants}
-                                    exit={{
-                                        opacity: 0,
-                                        transition: { duration: DURATION, ease: EASE_OUT_OPACITY },
-                                    }}
-                                    className="text-base short:lg:text-lg sm:text-lg lg:text-xl !leading-[1.3] font-medium text-center text-foreground text-pretty"
-                                >
-                                    Instantly connect with founders. One click in the browser
-                                    toolbar finds their contact and drafts your outreach in Gmail.
-                                    Powered by your Mistral AI and RocketReach API key.
-                                </motion.p>
-                            </div>
-                        </motion.div>
-
-                        <motion.div
-                            layout="position"
-                            transition={SPRING}
-                            key="button"
-                            initial={shouldReduceMotion ? false : "hidden"}
-                            animate="visible"
+                    <div className="flex flex-col gap-4 w-full max-w-xl md:gap-6 lg:gap-8">
+                        <motion.p
                             variants={landingItemVariants}
-                            className="mt-6 flex flex-col items-center gap-4"
+                            className="text-base short:lg:text-lg sm:text-lg lg:text-xl !leading-[1.3] font-medium text-center text-foreground text-pretty"
                         >
-                            <Button className={cn("relative px-8 gap-2")} shine>
-                                <ChromeIcon className="size-5" />
-                                <span className="inline-block">Download Extension</span>
-                                <Kbd className="ml-2 bg-foreground/30 text-foreground">enter</Kbd>
-                            </Button>
+                            Instantly connect with founders. One click in the browser toolbar
+                            finds their contact and drafts your outreach in Gmail. Powered by your
+                            Mistral AI and RocketReach API key.
+                        </motion.p>
+                    </div>
 
-                            <motion.div variants={landingItemVariants} className="flex items-center gap-6">
-                                <button
-                                    onClick={() => setShowDemo(true)}
-                                    className="text-sm font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none"
-                                >
-                                    Watch demo
+                    <motion.div variants={landingItemVariants} className="mt-6 flex flex-col items-center gap-4">
+                        <Button className={cn("relative px-8 gap-2")} shine>
+                            <ChromeIcon className="size-5" />
+                            <span className="inline-block">Download Extension</span>
+                            <Kbd className="ml-2 bg-foreground/30 text-foreground">enter</Kbd>
+                        </Button>
+
+                        <div className="flex items-center gap-6">
+                            <button
+                                onClick={() => setShowDemo(true)}
+                                className="text-sm font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none"
+                            >
+                                Watch demo
+                            </button>
+
+                            <button
+                                onClick={() => setShowSetup(true)}
+                                className="text-sm font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none"
+                            >
+                                How to setup
+                            </button>
+
+                            <Link
+                                href="https://github.com/emilianscheel/getintro.cc"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <button className="text-sm font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none">
+                                    View on GitHub
                                 </button>
-
-                                <button
-                                    onClick={() => setShowSetup(true)}
-                                    className="text-sm font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none"
-                                >
-                                    How to setup
-                                </button>
-
-                                <Link
-                                    href="https://github.com/emilianscheel/getintro.cc"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    <button className="text-sm font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none">
-                                        View on GitHub
-                                    </button>
-                                </Link>
-                            </motion.div>
-                        </motion.div>
-                    </AnimatePresence>
-                </motion.div>
+                            </Link>
+                        </div>
+                    </motion.div>
+                </div>
             </motion.div>
 
             {/* Demo Video Overlay */}
