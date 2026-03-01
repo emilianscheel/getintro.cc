@@ -176,6 +176,9 @@ const isOutreachRecord = (value: unknown): value is OutreachRecord => {
     typeof candidate.createdAtMs === "number" &&
     (candidate.status === "sent" || candidate.status === "draft") &&
     typeof candidate.hostname === "string" &&
+    typeof candidate.toEmail === "string" &&
+    Array.isArray(candidate.bccEmails) &&
+    candidate.bccEmails.every((email) => typeof email === "string") &&
     typeof candidate.recipientEmail === "string" &&
     typeof candidate.senderEmail === "string" &&
     typeof candidate.subject === "string" &&
@@ -217,6 +220,78 @@ export const appendOutreachRecord = async (record: OutreachRecord): Promise<void
   await setEncryptedOutreachHistory(current);
 };
 
+const normalizeOutreachRecord = (value: unknown): OutreachRecord | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Partial<OutreachRecord> & {
+    toEmail?: unknown;
+    bccEmails?: unknown;
+    recipientEmail?: unknown;
+  };
+
+  if (
+    typeof candidate.id !== "string" ||
+    typeof candidate.createdAtMs !== "number" ||
+    !Number.isFinite(candidate.createdAtMs) ||
+    (candidate.status !== "sent" && candidate.status !== "draft") ||
+    typeof candidate.hostname !== "string" ||
+    typeof candidate.senderEmail !== "string" ||
+    typeof candidate.subject !== "string" ||
+    typeof candidate.body !== "string" ||
+    typeof candidate.gmailUrl !== "string"
+  ) {
+    return null;
+  }
+
+  const toEmail =
+    typeof candidate.toEmail === "string" && candidate.toEmail.trim().length > 0
+      ? candidate.toEmail.trim()
+      : typeof candidate.recipientEmail === "string" && candidate.recipientEmail.trim().length > 0
+        ? candidate.recipientEmail.trim()
+        : "";
+
+  if (!toEmail) {
+    return null;
+  }
+
+  const rawBcc = Array.isArray(candidate.bccEmails) ? candidate.bccEmails : [];
+  const bccEmails = rawBcc
+    .filter((email): email is string => typeof email === "string")
+    .map((email) => email.trim())
+    .filter((email) => email.length > 0);
+
+  const normalizeOptional = (field: unknown): string | undefined => {
+    if (typeof field !== "string") {
+      return undefined;
+    }
+
+    const trimmed = field.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+
+  return {
+    id: candidate.id,
+    createdAtMs: Math.floor(candidate.createdAtMs),
+    status: candidate.status,
+    hostname: candidate.hostname,
+    toEmail,
+    bccEmails,
+    recipientEmail:
+      typeof candidate.recipientEmail === "string" && candidate.recipientEmail.trim().length > 0
+        ? candidate.recipientEmail.trim()
+        : toEmail,
+    senderEmail: candidate.senderEmail,
+    subject: candidate.subject,
+    body: candidate.body,
+    gmailUrl: candidate.gmailUrl,
+    gmailDraftId: normalizeOptional(candidate.gmailDraftId),
+    gmailMessageId: normalizeOptional(candidate.gmailMessageId),
+    gmailThreadId: normalizeOptional(candidate.gmailThreadId)
+  };
+};
+
 export const getOutreachHistory = async (): Promise<OutreachRecord[]> => {
   const envelopes = await getEncryptedOutreachHistory();
   const records: OutreachRecord[] = [];
@@ -225,17 +300,33 @@ export const getOutreachHistory = async (): Promise<OutreachRecord[]> => {
     try {
       const decrypted = await decryptSecret(envelope);
       const parsed = JSON.parse(decrypted) as unknown;
+      const normalized = normalizeOutreachRecord(parsed);
 
-      if (!isOutreachRecord(parsed)) {
+      if (!normalized) {
         console.error("[getintro.cc][storage] invalid outreach record payload");
         continue;
       }
 
-      records.push(parsed);
+      records.push(normalized);
     } catch (error) {
       console.error("[getintro.cc][storage] failed to decrypt outreach record", error);
     }
   }
 
   return records.sort((a, b) => b.createdAtMs - a.createdAtMs);
+};
+
+export const setOutreachHistory = async (records: OutreachRecord[]): Promise<void> => {
+  const envelopes: EncryptedSecretEnvelope[] = [];
+
+  for (const record of records) {
+    if (!isOutreachRecord(record)) {
+      continue;
+    }
+
+    const encrypted = await encryptSecret(JSON.stringify(record));
+    envelopes.push(encrypted);
+  }
+
+  await setEncryptedOutreachHistory(envelopes);
 };

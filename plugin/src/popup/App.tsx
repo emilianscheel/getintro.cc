@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   CachedDomainPipelinePool,
+  DraftAndSendRequest,
   OnboardingState,
   OnboardingStep,
   OutreachRecord,
@@ -322,13 +323,7 @@ export const App = () => {
     }
   };
 
-  const submitEmail = async (payload: {
-    fromEmail: string;
-    toEmail: string;
-    subject: string;
-    message: string;
-    hostname?: string;
-  }) => {
+  const submitEmail = async (payload: DraftAndSendRequest) => {
     setSubmitting(true);
 
     try {
@@ -353,13 +348,7 @@ export const App = () => {
     }
   };
 
-  const saveEmailDraft = async (payload: {
-    fromEmail: string;
-    toEmail: string;
-    subject: string;
-    message: string;
-    hostname?: string;
-  }) => {
+  const saveEmailDraft = async (payload: DraftAndSendRequest) => {
     setSubmitting(true);
 
     try {
@@ -384,12 +373,13 @@ export const App = () => {
     }
   };
 
-  const loadOutreachHistory = useCallback(async () => {
+  const loadOutreachHistory = useCallback(async (syncDraftStatuses = false) => {
     setOutreachHistoryLoading(true);
 
     try {
       const response = await sendRuntimeMessage({
-        type: MESSAGE_TYPE.GET_PAST_OUTREACHES
+        type: MESSAGE_TYPE.GET_PAST_OUTREACHES,
+        syncDraftStatuses
       });
 
       if (!response.ok || response.type !== MESSAGE_TYPE.PAST_OUTREACHES) {
@@ -411,7 +401,11 @@ export const App = () => {
   const openPastOutreaches = async () => {
     setOutreachHistoryQuery("");
     setScreen("past_outreaches");
-    await loadOutreachHistory();
+    await loadOutreachHistory(false);
+  };
+
+  const refreshOutreachHistory = async () => {
+    await loadOutreachHistory(true);
   };
 
   const clearActiveHostnameCache = async () => {
@@ -525,7 +519,7 @@ export const App = () => {
             searchQuery={outreachHistoryQuery}
             onSearchQueryChange={setOutreachHistoryQuery}
             onBack={() => setScreen("run")}
-            onRefresh={loadOutreachHistory}
+            onRefresh={refreshOutreachHistory}
           />
         ) : null}
 

@@ -23,6 +23,8 @@ const matchesQuery = (item: OutreachRecord, query: string): boolean => {
   return [
     item.status,
     item.hostname,
+    item.toEmail,
+    item.bccEmails.join(" "),
     item.recipientEmail,
     item.senderEmail,
     item.subject,
@@ -48,7 +50,7 @@ export const PastOutreachesView = ({
   );
 
   return (
-    <div className="flex h-full w-full min-h-0 flex-col py-2 text-white">
+    <div className="popup-view-enter-top flex h-full w-full min-h-0 flex-col py-2 text-white">
       <div className="mb-3 flex items-center justify-between">
         <button
           type="button"
@@ -105,7 +107,12 @@ export const PastOutreachesView = ({
                   <p className="truncate text-sm font-medium">{item.subject || "(no subject)"}</p>
                   <span className="text-[10px] uppercase text-white/80">{item.status}</span>
                 </div>
-                <p className="truncate text-xs text-white/80">{item.recipientEmail}</p>
+                <p className="truncate text-xs text-white/80">To: {item.toEmail}</p>
+                {item.bccEmails.length > 0 ? (
+                  <p className="truncate text-[11px] text-white/75">
+                    Bcc: {item.bccEmails.join(", ")}
+                  </p>
+                ) : null}
                 <p className="truncate text-[11px] text-white/70">{item.hostname}</p>
                 <p className="mt-1 line-clamp-2 text-[11px] text-white/80">{item.body}</p>
                 <div className="mt-2 flex items-center justify-between gap-2">

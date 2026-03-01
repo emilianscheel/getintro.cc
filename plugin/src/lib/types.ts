@@ -59,6 +59,7 @@ export type PipelineResult = {
 export type DraftAndSendRequest = {
   fromEmail: string;
   toEmail: string;
+  bccEmails?: string[];
   subject: string;
   message: string;
   hostname?: string;
@@ -71,11 +72,16 @@ export type OutreachRecord = {
   createdAtMs: number;
   status: OutreachStatus;
   hostname: string;
+  toEmail: string;
+  bccEmails: string[];
   recipientEmail: string;
   senderEmail: string;
   subject: string;
   body: string;
   gmailUrl: string;
+  gmailDraftId?: string;
+  gmailMessageId?: string;
+  gmailThreadId?: string;
 };
 
 export type RegexEmailDisplayContext = {

@@ -237,7 +237,7 @@ export const ResultFormView = ({
     }, [recipientQuery, result.candidates]);
 
     return (
-        <div className="flex h-full w-full min-h-0 flex-col overflow-visible py-2">
+        <div className="popup-view-enter-top flex h-full w-full min-h-0 flex-col overflow-visible py-2">
             <div className="flex min-h-0 w-full flex-1 flex-col gap-3 overflow-visible text-white">
                 <div className="flex w-full flex-col gap-6">
                     <div className="w-full space-y-2">
@@ -275,7 +275,7 @@ export const ResultFormView = ({
                             {recipientVisible ? (
                                 <div
                                     className={cn(
-                                        "absolute z-20 mt-6 flex h-44 w-full flex-col overflow-hidden rounded-2xl border border-white/[0.45] bg-transparent p-2 text-white shadow-button backdrop-blur-2xl ring-1 ring-white/[0.35]",
+                                        "absolute z-20 mt-6 flex h-44 w-full flex-col overflow-hidden rounded-2xl border border-white/[0.55] bg-white/[0.22] p-2 text-white shadow-button backdrop-blur-2xl ring-1 ring-white/[0.42]",
                                         recipientOpen
                                             ? "dropdown-modal-enter"
                                             : "dropdown-modal-exit",
@@ -382,13 +382,16 @@ export const ResultFormView = ({
                         className="w-full"
                         disabled={!canSubmit || submitting}
                         onClick={() => {
-                            if (selectedRecipientEmails.length === 0) {
+                            const primaryRecipient = selectedRecipientEmails[0];
+
+                            if (!primaryRecipient) {
                                 return;
                             }
 
                             void onSubmit({
                                 fromEmail,
-                                toEmail: selectedRecipientEmails.join(", "),
+                                toEmail: primaryRecipient,
+                                bccEmails: selectedRecipientEmails.slice(1),
                                 subject,
                                 message,
                                 hostname: result.domain,
@@ -412,13 +415,16 @@ export const ResultFormView = ({
                         disabled={!canSubmit || submitting}
                         className="block text-sm font-medium text-white/80 underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                         onClick={() => {
-                            if (selectedRecipientEmails.length === 0) {
+                            const primaryRecipient = selectedRecipientEmails[0];
+
+                            if (!primaryRecipient) {
                                 return;
                             }
 
                             void onSaveDraft({
                                 fromEmail,
-                                toEmail: selectedRecipientEmails.join(", "),
+                                toEmail: primaryRecipient,
+                                bccEmails: selectedRecipientEmails.slice(1),
                                 subject,
                                 message,
                                 hostname: result.domain,

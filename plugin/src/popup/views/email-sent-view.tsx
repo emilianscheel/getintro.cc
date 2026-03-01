@@ -8,7 +8,7 @@ type EmailSentViewProps = {
 
 export const EmailSentView = ({ gmailUrl, status }: EmailSentViewProps) => {
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-4 py-2">
+        <div className="popup-view-enter-top flex h-full w-full flex-col items-center justify-center gap-4 py-2">
             <div className="mt-3 text-xs text-white/80">
                 {status === "sent" ? "Sent successfully." : "Saved as draft."}
             </div>

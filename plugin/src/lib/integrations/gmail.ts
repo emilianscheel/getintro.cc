@@ -5,6 +5,23 @@ import { elapsedMs, logError, logInfo, previewText } from "../logging";
 const GMAIL_SENT_URL = "https://mail.google.com/mail/u/0/#sent";
 const GMAIL_DRAFTS_URL = "https://mail.google.com/mail/u/0/#drafts";
 
+type GmailMessageLookup = {
+  id?: string;
+  threadId?: string;
+};
+
+type GmailDraftResponse = {
+  id: string;
+  message?: GmailMessageLookup;
+};
+
+export type GmailSubmissionResult = {
+  draftId: string;
+  messageId: string;
+  threadId?: string;
+  gmailUrl: string;
+};
+
 export const buildGmailMessageUrl = (sent: {
   id?: string;
   threadId?: string;
@@ -31,6 +48,15 @@ export const buildGmailDraftUrl = (draft: {
   return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(token)}`;
 };
 
+class GmailApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 const base64UrlEncode = (value: string): string => {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
@@ -42,10 +68,13 @@ const base64UrlEncode = (value: string): string => {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 };
 
-const buildRawMessage = (request: DraftAndSendRequest): string => {
+export const buildRawMessage = (request: DraftAndSendRequest): string => {
   const lines = [
     `From: ${request.fromEmail}`,
     `To: ${request.toEmail}`,
+    ...(request.bccEmails && request.bccEmails.length > 0
+      ? [`Bcc: ${request.bccEmails.join(", ")}`]
+      : []),
     `Subject: ${request.subject}`,
     'Content-Type: text/plain; charset="UTF-8"',
     "MIME-Version: 1.0",
@@ -95,7 +124,7 @@ const gmailRequest = async <T>(
       elapsedMs: elapsedMs(requestStartedAt),
       errorBody
     });
-    throw new Error(`Gmail API error (${response.status}): ${errorBody}`);
+    throw new GmailApiError(response.status, `Gmail API error (${response.status}): ${errorBody}`);
   }
 
   const payload = (await response.json()) as T;
@@ -111,10 +140,11 @@ const gmailRequest = async <T>(
 
 export const createDraftAndSend = async (
   payload: DraftAndSendRequest
-): Promise<{ draftId: string; messageId: string; gmailUrl: string }> => {
+): Promise<GmailSubmissionResult> => {
   logInfo("gmail", "createDraftAndSend started", {
     fromEmail: payload.fromEmail,
     toEmail: payload.toEmail,
+    bccEmails: payload.bccEmails,
     subject: payload.subject,
     messageLength: payload.message.length,
     messagePreview: previewText(payload.message, 200)
@@ -123,7 +153,7 @@ export const createDraftAndSend = async (
   const raw = buildRawMessage(payload);
   logInfo("gmail", "encoded draft message", { rawLength: raw.length });
 
-  const draft = await gmailRequest<{ id: string; message?: { id?: string; threadId?: string } }>(
+  const draft = await gmailRequest<GmailDraftResponse>(
     token,
     "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
     {
@@ -141,7 +171,7 @@ export const createDraftAndSend = async (
     threadId: draft.message?.threadId
   });
 
-  const sent = await gmailRequest<{ id?: string; threadId?: string }>(
+  const sent = await gmailRequest<GmailMessageLookup>(
     token,
     "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send",
     {
@@ -152,27 +182,30 @@ export const createDraftAndSend = async (
     }
   );
   const messageId = sent.id?.trim() || sent.threadId?.trim() || "";
+  const threadId = sent.threadId?.trim() || undefined;
   const gmailUrl = buildGmailMessageUrl(sent);
   logInfo("gmail", "draft sent", {
     draftId: draft.id,
     messageId,
-    threadId: sent.threadId,
+    threadId,
     gmailUrl
   });
 
   return {
     draftId: draft.id,
     messageId,
+    threadId,
     gmailUrl
   };
 };
 
 export const createDraftOnly = async (
   payload: DraftAndSendRequest
-): Promise<{ draftId: string; messageId: string; gmailUrl: string }> => {
+): Promise<GmailSubmissionResult> => {
   logInfo("gmail", "createDraftOnly started", {
     fromEmail: payload.fromEmail,
     toEmail: payload.toEmail,
+    bccEmails: payload.bccEmails,
     subject: payload.subject,
     messageLength: payload.message.length,
     messagePreview: previewText(payload.message, 200)
@@ -181,7 +214,7 @@ export const createDraftOnly = async (
   const raw = buildRawMessage(payload);
   logInfo("gmail", "encoded draft-only message", { rawLength: raw.length });
 
-  const draft = await gmailRequest<{ id: string; message?: { id?: string; threadId?: string } }>(
+  const draft = await gmailRequest<GmailDraftResponse>(
     token,
     "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
     {
@@ -195,6 +228,7 @@ export const createDraftOnly = async (
   );
 
   const messageId = draft.message?.id?.trim() || draft.message?.threadId?.trim() || "";
+  const threadId = draft.message?.threadId?.trim() || undefined;
   const gmailUrl = buildGmailDraftUrl({
     id: draft.message?.id,
     threadId: draft.message?.threadId
@@ -203,13 +237,34 @@ export const createDraftOnly = async (
   logInfo("gmail", "draft-only created", {
     draftId: draft.id,
     messageId,
-    threadId: draft.message?.threadId,
+    threadId,
     gmailUrl
   });
 
   return {
     draftId: draft.id,
     messageId,
+    threadId,
     gmailUrl
   };
+};
+
+export const getDraftById = async (draftId: string): Promise<GmailDraftResponse | null> => {
+  const token = await getTokenForApi();
+
+  try {
+    return await gmailRequest<GmailDraftResponse>(
+      token,
+      `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(draftId)}`,
+      {
+        method: "GET"
+      }
+    );
+  } catch (error) {
+    if (error instanceof GmailApiError && error.status === 404) {
+      return null;
+    }
+
+    throw error;
+  }
 };

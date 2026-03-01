@@ -84,6 +84,7 @@ export type RuntimeRequest =
     }
   | {
       type: typeof MESSAGE_TYPE.GET_PAST_OUTREACHES;
+      syncDraftStatuses?: boolean;
     };
 
 export type RuntimeResponse =

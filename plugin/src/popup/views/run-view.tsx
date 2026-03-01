@@ -21,7 +21,7 @@ export const RunView = ({
     onOpenPastOutreaches,
 }: RunViewProps) => {
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-4 py-2">
+        <div className="popup-view-enter-top flex h-full w-full flex-col items-center justify-center gap-4 py-2">
             <div className="w-full space-y-4 text-center">
                 {running ? (
                     <div className="text-center">

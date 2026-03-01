@@ -3,11 +3,10 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Button } from "./ui/button";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Cross1Icon } from "@radix-ui/react-icons";
 import { Kbd } from "./ui/kbd";
-import { socialLinks } from "@/lib/constants";
 import Link from "next/link";
 
 const ChromeIcon = ({ className }: { className?: string }) => (
@@ -40,6 +39,35 @@ const SPRING = {
 export const Newsletter = () => {
     const [showDemo, setShowDemo] = useState(false);
     const [showSetup, setShowSetup] = useState(false);
+    const shouldReduceMotion = useReducedMotion();
+
+    const landingContainerVariants = {
+        hidden: { opacity: shouldReduceMotion ? 1 : 0 },
+        visible: {
+            opacity: 1,
+            transition: shouldReduceMotion
+                ? undefined
+                : {
+                      delayChildren: 0.08,
+                      staggerChildren: 0.1,
+                  },
+        },
+    };
+
+    const landingItemVariants = {
+        hidden: {
+            opacity: shouldReduceMotion ? 1 : 0,
+            y: shouldReduceMotion ? 0 : 22,
+        },
+        visible: {
+            opacity: 1,
+            y: 0,
+            transition: {
+                duration: 0.45,
+                ease: EASE_OUT_OPACITY,
+            },
+        },
+    };
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -58,9 +86,15 @@ export const Newsletter = () => {
 
     return (
         <>
-            <div className="flex overflow-hidden relative flex-col gap-4 justify-center items-center pt-10 w-full h-full short:lg:pt-10 pb-footer-safe-area 2xl:pt-footer-safe-area px-sides short:lg:gap-4 lg:gap-8">
+            <motion.div
+                initial="hidden"
+                animate="visible"
+                variants={landingContainerVariants}
+                className="flex overflow-hidden relative flex-col gap-4 justify-center items-center pt-10 w-full h-full short:lg:pt-10 pb-footer-safe-area 2xl:pt-footer-safe-area px-sides short:lg:gap-4 lg:gap-8"
+            >
                 <motion.div
                     layout="position"
+                    variants={landingItemVariants}
                     transition={{ duration: DURATION, ease: EASE_OUT }}
                     className={cn(
                         "transition-all duration-300",
@@ -72,7 +106,8 @@ export const Newsletter = () => {
                     </h1>
                 </motion.div>
 
-                <div
+                <motion.div
+                    variants={landingItemVariants}
                     className={cn(
                         "flex flex-col items-center min-h-0 shrink transition-all duration-300",
                         (showDemo || showSetup) && "blur-md opacity-50",
@@ -81,11 +116,13 @@ export const Newsletter = () => {
                     <AnimatePresence mode="popLayout" propagate>
                         <motion.div
                             key="newsletter"
-                            initial={false}
+                            initial={shouldReduceMotion ? false : "hidden"}
                             animate="visible"
                             exit="exit"
                             variants={{
                                 visible: {
+                                    opacity: 1,
+                                    y: 0,
                                     scale: 1,
                                     transition: {
                                         delay: DELAY,
@@ -94,6 +131,8 @@ export const Newsletter = () => {
                                     },
                                 },
                                 hidden: {
+                                    opacity: shouldReduceMotion ? 1 : 0,
+                                    y: shouldReduceMotion ? 0 : 20,
                                     scale: 0.9,
                                     transition: { duration: DURATION, ease: EASE_OUT },
                                 },
@@ -106,16 +145,12 @@ export const Newsletter = () => {
                         >
                             <div className="flex flex-col gap-4 w-full max-w-xl md:gap-6 lg:gap-8">
                                 <motion.p
-                                    initial={false}
-                                    animate={{ opacity: 1 }}
+                                    initial={shouldReduceMotion ? false : "hidden"}
+                                    animate="visible"
+                                    variants={landingItemVariants}
                                     exit={{
                                         opacity: 0,
                                         transition: { duration: DURATION, ease: EASE_OUT_OPACITY },
-                                    }}
-                                    transition={{
-                                        duration: DURATION,
-                                        ease: EASE_OUT,
-                                        delay: DELAY,
                                     }}
                                     className="text-base short:lg:text-lg sm:text-lg lg:text-xl !leading-[1.3] font-medium text-center text-foreground text-pretty"
                                 >
@@ -130,6 +165,9 @@ export const Newsletter = () => {
                             layout="position"
                             transition={SPRING}
                             key="button"
+                            initial={shouldReduceMotion ? false : "hidden"}
+                            animate="visible"
+                            variants={landingItemVariants}
                             className="mt-6 flex flex-col items-center gap-4"
                         >
                             <Button className={cn("relative px-8 gap-2")} shine>
@@ -138,7 +176,7 @@ export const Newsletter = () => {
                                 <Kbd className="ml-2 bg-foreground/30 text-foreground">enter</Kbd>
                             </Button>
 
-                            <div className="flex items-center gap-6">
+                            <motion.div variants={landingItemVariants} className="flex items-center gap-6">
                                 <button
                                     onClick={() => setShowDemo(true)}
                                     className="text-sm font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors outline-none focus:outline-none focus-visible:outline-none"
@@ -162,11 +200,11 @@ export const Newsletter = () => {
                                         View on GitHub
                                     </button>
                                 </Link>
-                            </div>
+                            </motion.div>
                         </motion.div>
                     </AnimatePresence>
-                </div>
-            </div>
+                </motion.div>
+            </motion.div>
 
             {/* Demo Video Overlay */}
             <AnimatePresence>

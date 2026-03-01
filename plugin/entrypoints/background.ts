@@ -21,6 +21,7 @@ import {
     getOutreachHistory,
     getPipelinePool,
     patchOnboardingState,
+    setOutreachHistory,
     setPipelinePool,
 } from "../src/lib/state/storage";
 import { mergePipelineResultIntoPool } from "../src/lib/state/pipelinePool";
@@ -40,7 +41,13 @@ import {
 import { inferNameFromEmailAddress } from "../src/lib/extract/inferNameFromEmail";
 import { buildRegexEmailDisplayContexts } from "../src/lib/extract/regexEmailContext";
 import { enrichCandidatesWithEmailProviders } from "../src/lib/integrations/email-enrichment";
-import { createDraftAndSend, createDraftOnly } from "../src/lib/integrations/gmail";
+import {
+    buildGmailMessageUrl,
+    createDraftAndSend,
+    createDraftOnly,
+    getDraftById,
+    type GmailSubmissionResult,
+} from "../src/lib/integrations/gmail";
 import { elapsedMs, logError, logInfo, previewText } from "../src/lib/logging";
 import { defineBackground } from "wxt/utils/define-background";
 
@@ -94,11 +101,17 @@ const summarizeRuntimeRequest = (message: RuntimeRequest): Record<string, unknow
                 payload: {
                     fromEmail: message.payload.fromEmail,
                     toEmail: message.payload.toEmail,
+                    bccEmails: message.payload.bccEmails,
                     subject: message.payload.subject,
                     messageLength: message.payload.message.length,
                     messagePreview: previewText(message.payload.message, 200),
                     hostname: message.payload.hostname,
                 },
+            };
+        case MESSAGE_TYPE.GET_PAST_OUTREACHES:
+            return {
+                type: message.type,
+                syncDraftStatuses: Boolean(message.syncDraftStatuses),
             };
         default:
             return { type: message.type };
@@ -327,31 +340,86 @@ const buildOutreachRecord = (
     payload: DraftAndSendRequest,
     mode: "sent" | "draft",
     hostname: string,
-    gmailUrl: string,
+    submission: GmailSubmissionResult,
 ): OutreachRecord => {
     return {
         id: crypto.randomUUID(),
         createdAtMs: Date.now(),
         status: mode,
         hostname,
+        toEmail: payload.toEmail,
+        bccEmails: payload.bccEmails ?? [],
         recipientEmail: payload.toEmail,
         senderEmail: payload.fromEmail,
         subject: payload.subject,
         body: payload.message,
-        gmailUrl,
+        gmailUrl: submission.gmailUrl,
+        gmailDraftId: submission.draftId,
+        gmailMessageId: submission.messageId || undefined,
+        gmailThreadId: submission.threadId,
     };
 };
 
 const submitOutboundEmail = async (
     payload: DraftAndSendRequest,
     mode: "sent" | "draft",
-): Promise<{ draftId: string; messageId: string; gmailUrl: string }> => {
+): Promise<GmailSubmissionResult> => {
     const result =
         mode === "sent" ? await createDraftAndSend(payload) : await createDraftOnly(payload);
     const hostname = await resolveOutboundHostname(payload.hostname);
-    const outreach = buildOutreachRecord(payload, mode, hostname, result.gmailUrl);
+    const outreach = buildOutreachRecord(payload, mode, hostname, result);
     await appendOutreachRecord(outreach);
     return result;
+};
+
+const reconcileDraftOutreachStatuses = async (
+    history: OutreachRecord[],
+): Promise<{ items: OutreachRecord[]; changed: boolean }> => {
+    if (history.length === 0) {
+        return { items: history, changed: false };
+    }
+
+    let changed = false;
+    const reconciled: OutreachRecord[] = [];
+
+    for (const item of history) {
+        if (item.status !== "draft" || !item.gmailDraftId) {
+            reconciled.push(item);
+            continue;
+        }
+
+        let draft: Awaited<ReturnType<typeof getDraftById>>;
+
+        try {
+            draft = await getDraftById(item.gmailDraftId);
+        } catch (error) {
+            logError("gmail", "failed to reconcile draft status", {
+                draftId: item.gmailDraftId,
+                error,
+            });
+            reconciled.push(item);
+            continue;
+        }
+
+        if (draft) {
+            reconciled.push(item);
+            continue;
+        }
+
+        changed = true;
+        const gmailUrl = buildGmailMessageUrl({
+            id: item.gmailMessageId,
+            threadId: item.gmailThreadId,
+        });
+        reconciled.push({
+            ...item,
+            status: "sent",
+            gmailUrl,
+            gmailDraftId: undefined,
+        });
+    }
+
+    return { items: reconciled, changed };
 };
 
 const poolToPipelineResult = (
@@ -888,10 +956,26 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
 
         case MESSAGE_TYPE.GET_PAST_OUTREACHES: {
             const items = await getOutreachHistory();
+            const shouldSync = Boolean(message.syncDraftStatuses);
+
+            if (!shouldSync) {
+                return {
+                    ok: true,
+                    type: MESSAGE_TYPE.PAST_OUTREACHES,
+                    items,
+                };
+            }
+
+            const reconciled = await reconcileDraftOutreachStatuses(items);
+
+            if (reconciled.changed) {
+                await setOutreachHistory(reconciled.items);
+            }
+
             return {
                 ok: true,
                 type: MESSAGE_TYPE.PAST_OUTREACHES,
-                items,
+                items: reconciled.items,
             };
         }
 
@@ -906,6 +990,7 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
             logInfo("gmail", "submitting outbound email", {
                 fromEmail: message.payload.fromEmail,
                 toEmail: message.payload.toEmail,
+                bccEmails: message.payload.bccEmails,
                 subject: message.payload.subject,
                 messageLength: message.payload.message.length,
                 messagePreview: previewText(message.payload.message, 200),
@@ -933,6 +1018,7 @@ const handleMessage = async (message: RuntimeRequest): Promise<RuntimeResponse> 
             logInfo("gmail", "saving outbound email as draft", {
                 fromEmail: message.payload.fromEmail,
                 toEmail: message.payload.toEmail,
+                bccEmails: message.payload.bccEmails,
                 subject: message.payload.subject,
                 messageLength: message.payload.message.length,
                 messagePreview: previewText(message.payload.message, 200),

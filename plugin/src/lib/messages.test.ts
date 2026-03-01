@@ -69,4 +69,13 @@ describe("isRuntimeRequest", () => {
       })
     ).toBe(true);
   });
+
+  it("accepts GET_PAST_OUTREACHES sync requests", () => {
+    expect(
+      isRuntimeRequest({
+        type: MESSAGE_TYPE.GET_PAST_OUTREACHES,
+        syncDraftStatuses: true
+      })
+    ).toBe(true);
+  });
 });
